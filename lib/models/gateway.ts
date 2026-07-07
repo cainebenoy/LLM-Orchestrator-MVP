@@ -147,7 +147,7 @@ export async function callCompareWebhook(
           models: selectedModels,
         }),
       },
-      30000 // 30s timeout
+      60000 // 60s timeout
     );
 
     const elapsedMs = Date.now() - startTime;
@@ -222,7 +222,7 @@ export async function callResearchWebhook(
         },
         body: JSON.stringify(requestBody),
       },
-      30000 // 30s timeout
+      60000 // 60s timeout
     );
 
     const elapsedMs = Date.now() - startTime;

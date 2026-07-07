@@ -443,6 +443,7 @@ export default function Home() {
             summary={summary}
             reason={reason}
             results={results} 
+            isLoading={isLoading}
           />
         )}
         

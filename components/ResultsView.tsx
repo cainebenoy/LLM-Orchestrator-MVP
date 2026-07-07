@@ -22,6 +22,7 @@ interface ResultsViewProps {
   summary: string | null;
   reason?: string | null;
   results: ResultCardProps[];
+  isLoading?: boolean;
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -57,7 +58,7 @@ function getRationale(modelName: string): string {
   return 'Included for general inference capability.';
 }
 
-export default function ResultsView({ mode, summary, reason, results }: ResultsViewProps) {
+export default function ResultsView({ mode, summary, reason, results, isLoading }: ResultsViewProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Calculate aggregates
@@ -96,6 +97,13 @@ export default function ResultsView({ mode, summary, reason, results }: ResultsV
         <div className="p-6 prose prose-zinc dark:prose-invert max-w-none">
           {summary ? (
             <ReactMarkdown>{summary}</ReactMarkdown>
+          ) : isLoading ? (
+            <div className="flex items-center gap-3 text-zinc-500 dark:text-zinc-400 py-4 animate-pulse">
+              <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+              <span className="italic text-sm">
+                Waiting for active models to finish before generating synthesized comparison...
+              </span>
+            </div>
           ) : (
             <div className="text-zinc-500 dark:text-zinc-400 italic">
               Summary generation is currently disabled or failed. Please view individual responses below.

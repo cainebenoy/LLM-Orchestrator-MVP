@@ -209,6 +209,10 @@ export default function Home() {
                 if (parsed.model === 'summary') {
                   currentSummary = `Summary generation failed: ${parsed.error}`;
                   setSummary(currentSummary);
+                } else if (['reddit', 'github', 'youtube', 'reddit-fallback', 'github-fallback', 'youtube-fallback'].includes(parsed.model)) {
+                  currentSummary = `Search grounding failed: ${parsed.error}`;
+                  setSummary(currentSummary);
+                  setError(parsed.error);
                 } else {
                   currentResults = currentResults.map(r => {
                     if (r.source === parsed.model) {

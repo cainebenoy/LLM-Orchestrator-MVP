@@ -81,15 +81,35 @@ export default function ResultsView({ mode, summary, reason, results, isLoading 
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-lg overflow-hidden transition-all duration-300">
         <div className="bg-zinc-50 dark:bg-zinc-950 px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center">
           <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-            {mode === 'reddit' ? '🔥 Reddit Sentiment Report' : mode === 'research' ? '🔍 Live Research Report' : '✨ Synthesized Summary'}
+            {mode === 'reddit' 
+              ? '🔥 Reddit Sentiment Report' 
+              : mode === 'github'
+              ? '💻 GitHub Repository Report'
+              : mode === 'youtube'
+              ? '📺 YouTube Video Analysis'
+              : mode === 'research' 
+              ? '🔍 Live Research Report' 
+              : '✨ Synthesized Summary'}
             <span className={`text-[10px] sm:text-xs font-semibold px-2 py-0.5 rounded-full border ${
               mode === 'reddit'
                 ? 'bg-orange-500/10 border-orange-500/20 text-orange-600 dark:text-orange-400'
+                : mode === 'github'
+                ? 'bg-purple-500/10 border-purple-500/20 text-purple-600 dark:text-purple-400'
+                : mode === 'youtube'
+                ? 'bg-red-500/10 border-red-500/20 text-red-600 dark:text-red-400'
                 : mode === 'research'
                 ? 'bg-blue-500/10 border-blue-500/20 text-blue-600 dark:text-blue-400'
                 : 'bg-zinc-100 dark:bg-zinc-800 border-zinc-250 dark:border-zinc-700 text-zinc-650 dark:text-zinc-400'
             }`}>
-              {mode === 'reddit' ? 'Reddit Mode' : mode === 'research' ? 'Research Mode' : 'Compare Mode'}
+              {mode === 'reddit' 
+                ? 'Reddit Mode' 
+                : mode === 'github' 
+                ? 'GitHub Mode' 
+                : mode === 'youtube' 
+                ? 'YouTube Mode' 
+                : mode === 'research' 
+                ? 'Research Mode' 
+                : 'Compare Mode'}
             </span>
           </h2>
           {summary && <CopyButton text={summary} />}

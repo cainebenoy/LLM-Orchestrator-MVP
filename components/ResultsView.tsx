@@ -80,7 +80,7 @@ export default function ResultsView({ mode, summary, reason, results, isLoading 
       {/* Primary Summary View */}
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-lg overflow-hidden transition-all duration-300">
         <div className="bg-zinc-50 dark:bg-zinc-950 px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center">
-          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100 flex flex-wrap items-center gap-2">
             {mode === 'reddit' 
               ? '🔥 Reddit Sentiment Report' 
               : mode === 'github'

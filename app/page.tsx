@@ -377,10 +377,10 @@ export default function Home() {
               rows={4}
             />
             {/* Action Row */}
-            <div className="flex justify-between items-center mt-3 p-2">
-              <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row gap-3 sm:items-center justify-between mt-3 p-2 border-t border-zinc-100 dark:border-zinc-800/40 pt-3">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                 {/* Focus Mode Selection Pills */}
-                <div className="flex items-center gap-1 p-0.5 bg-zinc-100 dark:bg-zinc-800/80 rounded-full border border-zinc-200/80 dark:border-zinc-700/60 max-w-fit">
+                <div className="flex items-center gap-1 p-0.5 bg-zinc-100 dark:bg-zinc-800/80 rounded-full border border-zinc-200/80 dark:border-zinc-700/60 max-w-full overflow-x-auto whitespace-nowrap">
                   {[
                     { id: 'default', label: 'Web', icon: Globe },
                     { id: 'reddit', label: 'Reddit', icon: Flame },
@@ -413,7 +413,7 @@ export default function Home() {
                   <button
                     onClick={resetChat}
                     type="button"
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border bg-zinc-100 dark:bg-zinc-805 border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition-all"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border bg-zinc-100 dark:bg-zinc-805 border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition-all shrink-0"
                     title="Start a new chat topic"
                   >
                     <RefreshCcw className="w-3 h-3 text-zinc-400" />
@@ -427,12 +427,12 @@ export default function Home() {
                 </div>
               </div>
               
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-end gap-2 w-full sm:w-auto border-t sm:border-t-0 border-zinc-150 dark:border-zinc-800/40 pt-2 sm:pt-0">
                 {results.length > 0 && (
                   <button
                     onClick={handleRun}
                     disabled={isLoading || !prompt.trim()}
-                    className="p-3 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 rounded-2xl hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                    className="p-3 bg-zinc-100 dark:bg-zinc-805 text-zinc-600 dark:text-zinc-300 rounded-2xl hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                     title="Regenerate"
                   >
                     <RefreshCcw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
@@ -441,7 +441,7 @@ export default function Home() {
                 <button
                   onClick={handleRun}
                   disabled={isLoading || !prompt.trim()}
-                  className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-2xl flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95 shadow-md shadow-blue-600/20"
+                  className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-2xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95 shadow-md shadow-blue-600/20 w-full sm:w-auto"
                 >
                   {isLoading ? (
                     <Loader2 className="w-5 h-5 animate-spin" />

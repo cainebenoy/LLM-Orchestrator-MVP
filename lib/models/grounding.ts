@@ -35,11 +35,11 @@ export async function streamGroundingSearch(
   mode: FocusMode,
   onToken: (text: string) => void,
   onComplete: (summaryData: { text: string; citations: string[]; inputTokens: number; outputTokens: number; cost: number }) => void,
-  onError: (errorMsg: string) => void
+  onError: (errorMsg: string) => Promise<void> | void
 ): Promise<void> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey.includes('your-gemini')) {
-    onError('GEMINI_API_KEY is missing or invalid in .env.local');
+    await onError('GEMINI_API_KEY is missing or invalid in .env.local');
     return;
   }
 
@@ -66,7 +66,7 @@ export async function streamGroundingSearch(
       result = await model.generateContentStream(sysPrompt);
     } catch (fallbackError: any) {
       console.error('[Grounding Stream] Both Gemini 2.5 and 1.5 models failed:', fallbackError);
-      onError(`Search limits reached: Gemini rate limit hit. (${fallbackError.message || fallbackError})`);
+      await onError(`Search limits reached: Gemini rate limit hit. (${fallbackError.message || fallbackError})`);
       return;
     }
   }
@@ -103,6 +103,6 @@ export async function streamGroundingSearch(
     });
   } catch (error: any) {
     console.error('[Grounding Stream] Content collection failed:', error);
-    onError(error.message || 'Failed to stream search grounding content.');
+    await onError(error.message || 'Failed to stream search grounding content.');
   }
 }

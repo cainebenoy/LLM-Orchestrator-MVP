@@ -83,3 +83,87 @@ Reference specific subreddits (e.g., r/nextjs) or threads when summarizing. Focu
     throw error;
   }
 }
+
+/**
+ * Stream Reddit search and sentiment summary token-by-token.
+ */
+export async function streamRedditSearch(
+  prompt: string,
+  onToken: (text: string) => void,
+  onComplete: (summaryData: { text: string; citations: string[]; inputTokens: number; outputTokens: number; cost: number }) => void,
+  onError: (errorMsg: string) => void
+): Promise<void> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey.includes('your-gemini')) {
+    onError('GEMINI_API_KEY is missing or invalid in .env.local');
+    return;
+  }
+
+  const sysPrompt = `Perform a live search on Google specifically targeting reddit.com threads and discussions.
+Search widely for discussions, opinions, and threads related to the topic: "${prompt}". 
+You must do a deep review of the results, examining at least 10-15 different threads, subreddits, and comment sections to capture a comprehensive view.
+Summarize the general consensus, differing opinions, sentiment (positive/negative/neutral), and key talking points found in those Reddit threads. 
+Reference specific subreddits (e.g., r/nextjs) or threads when summarizing. Focus strictly on Reddit discussions. Format your response in markdown.`;
+
+  let result;
+  let modelName = 'gemini-2.5-flash';
+  const genAI = new GoogleGenerativeAI(apiKey);
+
+  try {
+    const model = genAI.getGenerativeModel({ 
+      model: modelName,
+      tools: [{ googleSearch: {} }] as any
+    });
+    result = await model.generateContentStream(sysPrompt);
+  } catch (error: any) {
+    console.warn(`[Reddit Stream] Gemini 2.5 Flash failed, trying Gemini 1.5 Flash:`, error);
+    modelName = 'gemini-1.5-flash';
+    
+    try {
+      const model = genAI.getGenerativeModel({ 
+        model: modelName,
+        tools: [{ googleSearch: {} }] as any
+      });
+      result = await model.generateContentStream(sysPrompt);
+    } catch (fallbackError: any) {
+      console.error('[Reddit Stream] Both Gemini 2.5 and 1.5 models failed:', fallbackError);
+      onError(`Reddit search limits reached: Gemini rate limit hit. (${fallbackError.message || fallbackError})`);
+      return;
+    }
+  }
+
+  try {
+    let fullText = '';
+    for await (const chunk of result.stream) {
+      const chunkText = chunk.text();
+      fullText += chunkText;
+      onToken(chunkText);
+    }
+
+    const citations: string[] = [];
+    const responseData = await result.response;
+    const metadata = (responseData as any).candidates?.[0]?.groundingMetadata;
+    if (metadata?.groundingChunks) {
+      metadata.groundingChunks.forEach((chunk: any) => {
+        if (chunk.web?.uri) {
+          citations.push(chunk.web.uri);
+        }
+      });
+    }
+
+    const inputTokens = estimateTokenCount(sysPrompt);
+    const outputTokens = estimateTokenCount(fullText);
+    const cost = calculateModelCost(modelName, inputTokens, outputTokens);
+
+    onComplete({
+      text: fullText,
+      citations: Array.from(new Set(citations)),
+      inputTokens,
+      outputTokens,
+      cost
+    });
+  } catch (error: any) {
+    console.error('[Reddit Stream] Content collection failed:', error);
+    onError(error.message || 'Failed to stream search grounding content.');
+  }
+}

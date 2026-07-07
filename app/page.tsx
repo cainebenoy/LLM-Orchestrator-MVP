@@ -62,6 +62,11 @@ export default function Home() {
     setSummary(null);
     setMode('');
     setReason(null);
+
+    let currentResults: any[] = [];
+    let currentSummary = '';
+    let currentMode = '';
+    let currentReason = '';
     
     try {
       const response = await fetch('/api/ask', {
@@ -70,23 +75,138 @@ export default function Home() {
         body: JSON.stringify({ prompt, isRedditMode }),
       });
       
-      const data = await response.json();
-      
       if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
         throw new Error(data.error || 'Failed to fetch results from the Orchestrator.');
       }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
       
-      setResults(data.results || []);
-      setSummary(data.summary || null);
-      setMode(data.mode || 'compare');
-      setReason(data.reason || null);
-      
+      if (!reader) {
+        throw new Error('Stream reader failed to initialize.');
+      }
+
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        
+        // Save the last element (incomplete line) back into buffer
+        buffer = parts.pop() || '';
+
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line || !line.startsWith('data: ')) continue;
+
+          try {
+            const parsed = JSON.parse(line.slice(6));
+
+            switch (parsed.type) {
+              case 'info':
+                setMode(parsed.mode || 'compare');
+                setReason(parsed.reason || null);
+                currentMode = parsed.mode || 'compare';
+                currentReason = parsed.reason || null;
+
+                // Pre-populate card placeholders with loaders so layout is instant
+                if (currentMode === 'compare') {
+                  const placeholders = [
+                    { source: 'claude-3-5-sonnet', label: 'Claude 3.5 Sonnet', text: '', isLoading: true },
+                    { source: 'gpt-4o', label: 'ChatGPT 4o', text: '', isLoading: true },
+                    { source: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', text: '', isLoading: true },
+                    { source: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (via Groq)', text: '', isLoading: true }
+                  ];
+                  setResults(placeholders);
+                  currentResults = placeholders;
+                } else if (currentMode === 'reddit') {
+                  const placeholders = [
+                    { source: 'reddit', label: 'Reddit Search & Sentiment', text: '', isLoading: true }
+                  ];
+                  setResults(placeholders);
+                  currentResults = placeholders;
+                } else if (currentMode === 'research') {
+                  const placeholders = [
+                    { source: 'research', label: 'Live Research Report', text: '', isLoading: true }
+                  ];
+                  setResults(placeholders);
+                  currentResults = placeholders;
+                }
+                break;
+
+              case 'token':
+                if (parsed.model === 'summary') {
+                  currentSummary += parsed.text;
+                  setSummary(currentSummary);
+                } else {
+                  currentResults = currentResults.map(r => {
+                    if (r.source === parsed.model) {
+                      return { ...r, text: r.text + parsed.text, isLoading: false };
+                    }
+                    return r;
+                  });
+                  setResults(currentResults);
+                }
+                break;
+
+              case 'completed':
+                // Check if result is already in the list
+                const exists = currentResults.some(r => r.source === parsed.model);
+                if (exists) {
+                  currentResults = currentResults.map(r => {
+                    if (r.source === parsed.model) {
+                      return { ...r, ...parsed.result, isLoading: false };
+                    }
+                    return r;
+                  });
+                } else {
+                  currentResults.push({ ...parsed.result, isLoading: false });
+                }
+                setResults(currentResults);
+                break;
+
+              case 'error':
+                if (parsed.model === 'summary') {
+                  currentSummary = `Summary generation failed: ${parsed.error}`;
+                  setSummary(currentSummary);
+                } else {
+                  currentResults = currentResults.map(r => {
+                    if (r.source === parsed.model) {
+                      return { ...r, error: parsed.error, isLoading: false };
+                    }
+                    return r;
+                  });
+                  setResults(currentResults);
+                }
+                break;
+
+              case 'summary_completed':
+                currentSummary = parsed.summary;
+                setSummary(parsed.summary);
+                break;
+
+              case 'status':
+                // Handle intermediate status flags (optional, log for now)
+                console.log(`[Stream Status]: ${parsed.status}`);
+                break;
+            }
+          } catch (err) {
+            console.error('Failed to parse SSE payload:', err, line);
+          }
+        }
+      }
+
+      // Save complete run to history
       saveRun({
         prompt,
-        mode: data.mode || 'compare',
-        results: data.results || [],
-        summary: data.summary || null,
-        reason: data.reason || null,
+        mode: currentMode || 'compare',
+        results: currentResults.map(({ isLoading, ...rest }) => rest), // Clean loading flags
+        summary: currentSummary || null,
+        reason: currentReason || null,
       });
       
     } catch (err: any) {

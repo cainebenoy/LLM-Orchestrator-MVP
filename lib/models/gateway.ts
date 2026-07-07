@@ -423,3 +423,194 @@ ${context}`;
     }
   }
 }
+
+/**
+ * Stream Gemini directly, emitting tokens as they arrive, and calculating pricing.
+ */
+export async function streamGeminiDirect(
+  prompt: string,
+  onToken: (text: string) => void,
+  onComplete: (result: WebhookResult) => void,
+  onError: (errorMsg: string) => void
+): Promise<void> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey.includes('your-gemini')) {
+    onError('GEMINI_API_KEY is missing or invalid in .env.local');
+    return;
+  }
+
+  const startTime = Date.now();
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const result = await model.generateContentStream(prompt);
+    
+    let fullText = '';
+    for await (const chunk of result.stream) {
+      const chunkText = chunk.text();
+      fullText += chunkText;
+      onToken(chunkText);
+    }
+    
+    const elapsedMs = Date.now() - startTime;
+    const inputTokens = estimateTokenCount(prompt);
+    const outputTokens = estimateTokenCount(fullText);
+    const cost = calculateModelCost('gemini-2.5-flash', inputTokens, outputTokens);
+
+    onComplete({
+      source: 'gemini-2.5-flash',
+      label: 'Gemini 2.5 Flash',
+      text: fullText,
+      latencyMs: elapsedMs,
+      inputTokens,
+      outputTokens,
+      cost
+    });
+  } catch (error: any) {
+    console.error('[Gateway Stream] Gemini direct error:', error);
+    onError(cleanErrorMessage(error, 'Gemini 2.5 Flash'));
+  }
+}
+
+/**
+ * Stream Groq directly, emitting tokens as they arrive, and calculating pricing.
+ */
+export async function streamGroqDirect(
+  prompt: string,
+  onToken: (text: string) => void,
+  onComplete: (result: WebhookResult) => void,
+  onError: (errorMsg: string) => void
+): Promise<void> {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey || apiKey.includes('your-groq')) {
+    onError('GROQ_API_KEY is missing or invalid in .env.local');
+    return;
+  }
+
+  const startTime = Date.now();
+  try {
+    const groq = new OpenAI({
+      apiKey: apiKey,
+      baseURL: 'https://api.groq.com/openai/v1',
+    });
+
+    const stream = await groq.chat.completions.create({
+      messages: [{ role: 'user', content: prompt }],
+      model: 'llama-3.3-70b-versatile',
+      stream: true,
+    });
+
+    let fullText = '';
+    for await (const chunk of stream) {
+      const chunkText = chunk.choices[0]?.delta?.content || '';
+      if (chunkText) {
+        fullText += chunkText;
+        onToken(chunkText);
+      }
+    }
+
+    const elapsedMs = Date.now() - startTime;
+    const inputTokens = estimateTokenCount(prompt);
+    const outputTokens = estimateTokenCount(fullText);
+    const cost = calculateModelCost('llama-3.3-70b-versatile', inputTokens, outputTokens);
+
+    onComplete({
+      source: 'llama-3.3-70b-versatile',
+      label: 'Llama 3.3 70B (via Groq)',
+      text: fullText,
+      latencyMs: elapsedMs,
+      inputTokens,
+      outputTokens,
+      cost
+    });
+  } catch (error: any) {
+    console.error('[Gateway Stream] Groq direct error:', error);
+    onError(cleanErrorMessage(error, 'Llama 3.3 70B'));
+  }
+}
+
+/**
+ * Stream the Synthesized Summary from multiple model responses.
+ */
+export async function streamSynthesizeSummary(
+  prompt: string,
+  results: WebhookResult[],
+  onToken: (text: string) => void,
+  onComplete: (summaryText: string) => void,
+  onError: (errorMsg: string) => void
+): Promise<void> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey.includes('your-gemini')) {
+    onError('Summary generation failed: GEMINI_API_KEY is missing.');
+    return;
+  }
+
+  if (!results || results.length === 0) {
+    onComplete('No results to summarize.');
+    return;
+  }
+
+  let context = `Original Prompt: "${prompt}"\n\n`;
+  results.forEach(r => {
+    if (!r.error && r.text) {
+      context += `--- Model: ${r.label} ---\n${r.text}\n\n`;
+    }
+  });
+
+  const sysPrompt = `You are an expert AI orchestrator. You are given an original user prompt and the independent responses from multiple different AI models.
+Your task is to synthesize a comparison. Note where the models agree, where they meaningfully differ, and explicitly state which response seems strongest and why. Keep your summary concise, objective, and format it in markdown.
+
+Here are the responses:
+${context}`;
+
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const result = await model.generateContentStream(sysPrompt);
+    
+    let fullText = '';
+    for await (const chunk of result.stream) {
+      const chunkText = chunk.text();
+      fullText += chunkText;
+      onToken(chunkText);
+    }
+    onComplete(fullText);
+  } catch (error: any) {
+    console.error('[Gateway Stream] Gemini synthesis failed, trying Groq fallback:', error);
+    
+    // Check if Groq key exists for fallback
+    const groqKey = process.env.GROQ_API_KEY;
+    if (!groqKey || groqKey.includes('your-groq')) {
+      onError(`Summary limits reached. Fallback to Groq failed because GROQ_API_KEY is not configured.`);
+      return;
+    }
+
+    try {
+      const groq = new OpenAI({
+        apiKey: groqKey,
+        baseURL: 'https://api.groq.com/openai/v1',
+      });
+
+      const stream = await groq.chat.completions.create({
+        messages: [{ role: 'user', content: sysPrompt }],
+        model: 'llama-3.3-70b-versatile',
+        stream: true,
+      });
+
+      onToken('*(Note: Summarized via Llama 3.3 70B due to Gemini API limit)*\n\n');
+      let fullText = '*(Note: Summarized via Llama 3.3 70B due to Gemini API limit)*\n\n';
+
+      for await (const chunk of stream) {
+        const chunkText = chunk.choices[0]?.delta?.content || '';
+        if (chunkText) {
+          fullText += chunkText;
+          onToken(chunkText);
+        }
+      }
+      onComplete(fullText);
+    } catch (groqError: any) {
+      console.error('[Gateway Stream] Fallback to Groq also failed:', groqError);
+      onError(`Summary failed. Gemini limits reached and Groq fallback errored: ${groqError.message || groqError}`);
+    }
+  }
+}

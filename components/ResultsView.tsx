@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { ChevronDown, ChevronUp, Copy, Check, TrendingUp, Clock } from 'lucide-react';
+import { ChevronDown, ChevronUp, Copy, Check, TrendingUp, Clock, Loader2 } from 'lucide-react';
 
 interface ResultCardProps {
   source: string;
@@ -14,6 +14,7 @@ interface ResultCardProps {
   cost?: number;
   error?: string;
   citations?: string[];
+  isLoading?: boolean;
 }
 
 interface ResultsViewProps {
@@ -160,15 +161,20 @@ export default function ResultsView({ mode, summary, reason, results }: ResultsV
                 {result.text && <CopyButton text={result.text} />}
               </div>
 
-              {result.error ? (
-                <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-4 rounded-xl border border-red-100 dark:border-red-900/50 flex-grow">
-                  {result.error}
-                </div>
-              ) : (
-                <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none flex-grow overflow-x-auto">
-                  <ReactMarkdown>{result.text || ''}</ReactMarkdown>
-                </div>
-              )}
+              {result.isLoading ? (
+                 <div className="flex flex-col gap-2 flex-grow justify-center items-center py-10 text-zinc-400 dark:text-zinc-500 text-sm">
+                   <Loader2 className="w-6 h-6 animate-spin text-zinc-400 dark:text-zinc-500" />
+                   <span>Streaming response...</span>
+                 </div>
+               ) : result.error ? (
+                 <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-4 rounded-xl border border-red-100 dark:border-red-900/50 flex-grow">
+                   {result.error}
+                 </div>
+               ) : (
+                 <div className="prose prose-sm prose-zinc dark:prose-invert max-w-none flex-grow overflow-x-auto">
+                   <ReactMarkdown>{result.text || ''}</ReactMarkdown>
+                 </div>
+               )}
 
               {/* Citations */}
               {result.citations && result.citations.length > 0 && (

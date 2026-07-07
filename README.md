@@ -1,36 +1,102 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Multi-LLM Orchestrator MVP
 
-## Getting Started
+A general-purpose, high-performance LLM Orchestrator prototype. This dashboard allows you to submit a single prompt, routes it intelligently to appropriate execution paths, queries multiple models in parallel, and presents a synthesized comparison report.
 
-First, run the development server:
+## 🚀 Key Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+*   **Intelligent Auto-Routing**: Analyzes prompts using fast heuristics to route them between **Compare Mode** (multi-model evaluation) and **Research Mode** (summarizing topics or extracting data from URLs).
+*   **Hybrid API Gateway**:
+    *   **Compare Webhook (Make.com)**: Runs Claude 3.5 Sonnet and GPT-4o in parallel.
+    *   **Direct SDKs**: Bypasses webhook limits to run Gemini 2.5 Flash and Llama 3.3 70B (via Groq) directly from the server.
+*   **Synthesized Summaries**: Consolidates responses from all models and asks Gemini 2.5 Flash to generate a detailed comparison (where they agree, where they differ, and which is strongest).
+*   **Reddit Search & Sentiment Mode**: Toggle dedicated Reddit search to query `reddit.com` discussions utilizing Google Search Grounding to bypass strict WAF blocks and 403 errors, returning cited threads and community analysis.
+*   **Cost & Latency Tracker**: Aggregates and displays exact orchestration costs in **Indian Rupees (INR)** based on live token counts and calculates total execution latency.
+*   **LocalStorage Run History**: Cache previous searches locally in the browser to reload past runs instantly from a slide-out drawer.
+*   **Typewriter UI & Copy Utilities**: Copy markdown outputs with a single click, choose between light/dark mode, and enjoy a fully responsive interface.
+
+---
+
+## 🛠️ Tech Stack
+
+*   **Framework**: Next.js 16 (App Router)
+*   **Styling**: Tailwind CSS v4 (incorporating `@tailwindcss/typography` plugin)
+*   **SDKs**: `@google/generative-ai` (Gemini), `openai` (Groq SDK wrapper)
+*   **Package Manager**: `pnpm`
+*   **Deployment**: Production-ready for Vercel
+
+---
+
+## 🔑 Environment Variables Setup
+
+Create a `.env.local` file in the root directory (based on `.env.example`) and configure your API keys and webhooks:
+
+```env
+# Make.com webhooks
+MAKE_COMPARE_WEBHOOK_URL="https://hook.eu1.make.com/..."
+MAKE_RESEARCH_WEBHOOK_URL="https://hook.eu1.make.com/..."
+
+# Direct LLM SDK Keys (No credit card required for free tiers)
+GEMINI_API_KEY="your-gemini-key"
+GROQ_API_KEY="your-groq-key"
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+*Note: `.env.local` is listed in `.gitignore` and will never be committed to repository branches.*
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## ⚙️ Running Locally
 
-## Learn More
+1.  **Install dependencies**:
+    ```bash
+    pnpm install
+    ```
+2.  **Start development server**:
+    ```bash
+    pnpm run dev
+    ```
+3.  Open [http://localhost:3000](http://localhost:3000) (or `3001` if `3000` is occupied).
 
-To learn more about Next.js, take a look at the following resources:
+4.  **Production build test**:
+    ```bash
+    pnpm run build
+    ```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## ☁️ Make.com Integration & Webhook Schemas
 
-## Deploy on Vercel
+### 1. Webhook Payload Sent by Next.js
+```json
+{
+  "prompt": "Write a short poem about a server error.",
+  "models": ["claude-3-5-sonnet", "gpt-4o"]
+}
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 2. Expected Webhook Response Body (JSON)
+To ensure Next.js parses the Make.com response correctly, add a **Webhook Response** module in Make, configure custom headers with `Content-Type: application/json`, and use the following body:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```json
+{
+  "results": [
+    {
+      "source": "gpt-4o",
+      "label": "ChatGPT 4o",
+      "text": "{{escapeJSON(1.text)}}"
+    },
+    {
+      "source": "claude-3-5-sonnet",
+      "label": "Claude 3.5 Sonnet",
+      "text": "{{escapeJSON(2.text)}}"
+    }
+  ]
+}
+```
+*Note: Always wrap output texts in `escapeJSON(...)` in Make.com to prevent raw newlines or quotes from breaking the JSON payload.*
+
+---
+
+## 🛡️ Robust Failures & Fallbacks
+
+*   **API Resilience**: Direct API calls (Gemini/Groq) and Webhook requests are fired in parallel using `Promise.allSettled`. If one provider is down or rate-limited, the others will still display successfully.
+*   **Automatic Summarizer Fallback**: If Gemini 2.5 Flash hits a quota limit while generating a Synthesized Summary, the gateway intercepts the error and routes the prompt automatically to **Llama 3.3 70B (via Groq)** to build the summary, adding a small notice tag at the top.

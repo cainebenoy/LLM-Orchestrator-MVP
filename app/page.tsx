@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Send, Moon, Sun, Loader2, Menu, X, Clock, Trash2, RefreshCcw, Layers, CheckCircle2, MessageSquare, Flame } from 'lucide-react';
+import { Send, Moon, Sun, Loader2, Menu, X, Clock, Trash2, RefreshCcw, Layers, CheckCircle2, MessageSquare, Flame, Globe, Code, Video } from 'lucide-react';
 import { useHistory, OrchestrationRun } from '@/lib/hooks/useHistory';
 import ResultsView from '@/components/ResultsView';
 
@@ -17,7 +17,7 @@ export default function Home() {
   const [mode, setMode] = useState<string>('');
   const [reason, setReason] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isRedditMode, setIsRedditMode] = useState(false);
+  const [focusMode, setFocusMode] = useState<string>('default');
   
   // History and Sidebar state
   const { history, saveRun, deleteRun, clearHistory } = useHistory();
@@ -40,7 +40,7 @@ export default function Home() {
     setResults(run.results);
     setSummary(run.summary);
     setReason(run.reason);
-    setIsRedditMode(run.mode === 'reddit');
+    setFocusMode(run.mode || 'default');
     setMessages([
       { role: 'user', content: run.prompt },
       { role: 'assistant', content: run.summary || 'Completed' }
@@ -58,6 +58,7 @@ export default function Home() {
     setReason(null);
     setMessages([]);
     setError(null);
+    setFocusMode('default');
   };
 
   const toggleDarkMode = () => {
@@ -95,7 +96,7 @@ export default function Home() {
       const response = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: updatedMessages, isRedditMode }),
+        body: JSON.stringify({ messages: updatedMessages, focusMode }),
       });
       
       if (!response.ok) {
@@ -149,6 +150,18 @@ export default function Home() {
                 } else if (currentMode === 'reddit') {
                   const placeholders = [
                     { source: 'reddit', label: 'Reddit Search & Sentiment', text: '', isLoading: true }
+                  ];
+                  setResults(placeholders);
+                  currentResults = placeholders;
+                } else if (currentMode === 'github') {
+                  const placeholders = [
+                    { source: 'github', label: 'GitHub Search & Code Analysis', text: '', isLoading: true }
+                  ];
+                  setResults(placeholders);
+                  currentResults = placeholders;
+                } else if (currentMode === 'youtube') {
+                  const placeholders = [
+                    { source: 'youtube', label: 'YouTube Search & Video Review', text: '', isLoading: true }
                   ];
                   setResults(placeholders);
                   currentResults = placeholders;
@@ -362,23 +375,40 @@ export default function Home() {
             {/* Action Row */}
             <div className="flex justify-between items-center mt-3 p-2">
               <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setIsRedditMode(!isRedditMode)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all duration-305 ${
-                    isRedditMode
-                      ? 'bg-orange-500/10 border-orange-500/30 text-orange-600 dark:text-orange-400 shadow-sm shadow-orange-500/5'
-                      : 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
-                  }`}
-                  title="Search Reddit discussions specifically"
-                >
-                  <Flame className={`w-3.5 h-3.5 ${isRedditMode ? 'text-orange-500 animate-pulse' : ''}`} />
-                  Reddit Search
-                </button>
+                {/* Focus Mode Selection Pills */}
+                <div className="flex items-center gap-1 p-0.5 bg-zinc-100 dark:bg-zinc-800/80 rounded-full border border-zinc-200/80 dark:border-zinc-700/60 max-w-fit">
+                  {[
+                    { id: 'default', label: 'Web', icon: Globe },
+                    { id: 'reddit', label: 'Reddit', icon: Flame },
+                    { id: 'github', label: 'GitHub', icon: Code },
+                    { id: 'youtube', label: 'YouTube', icon: Video }
+                  ].map((opt) => {
+                    const Icon = opt.icon;
+                    const isActive = focusMode === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        onClick={() => setFocusMode(opt.id)}
+                        type="button"
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all duration-300 ${
+                          isActive
+                            ? 'bg-white dark:bg-zinc-950 text-zinc-900 dark:text-white shadow-sm border-zinc-200 dark:border-zinc-800'
+                            : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
+                        }`}
+                        title={`${opt.label} Search Focus`}
+                      >
+                        <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-blue-500 dark:text-blue-400' : ''}`} />
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
                 
                 {/* New Chat / Reset conversation */}
                 {(messages.length > 0 || results.length > 0) && (
                   <button
                     onClick={resetChat}
+                    type="button"
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border bg-zinc-100 dark:bg-zinc-805 border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition-all"
                     title="Start a new chat topic"
                   >

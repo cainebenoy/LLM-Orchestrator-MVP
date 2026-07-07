@@ -9,7 +9,7 @@ import {
   streamGroqDirect,
   streamSynthesizeSummary
 } from '@/lib/models/gateway';
-import { streamRedditSearch } from '@/lib/models/reddit';
+import { streamGroundingSearch, FocusMode } from '@/lib/models/grounding';
 
 // Default models to run in compare mode via Make.com (e.g. Claude + ChatGPT)
 const DEFAULT_MAKE_MODELS = ['claude-3-5-sonnet', 'gpt-4o'];
@@ -17,7 +17,10 @@ const DEFAULT_MAKE_MODELS = ['claude-3-5-sonnet', 'gpt-4o'];
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { prompt, messages, isRedditMode } = body;
+    const { prompt, messages, focusMode, isRedditMode } = body;
+
+    // Resolve active focus mode supporting backwards compatibility for isRedditMode
+    const activeFocusMode: FocusMode = focusMode || (isRedditMode ? 'reddit' : 'default');
 
     // Separate active prompt from chat history context
     let activePrompt = '';
@@ -45,22 +48,24 @@ export async function POST(request: Request) {
 
         const startTime = Date.now();
 
-        // 1. Reddit Search Mode (Google Search Grounding)
-        if (isRedditMode) {
+        // 1. Dynamic Grounding Focus Mode (Reddit, GitHub, YouTube, etc.)
+        if (activeFocusMode !== 'default') {
+          const focusLabel = activeFocusMode === 'reddit' ? 'Reddit' : activeFocusMode === 'github' ? 'GitHub' : 'YouTube';
           sendEvent('info', {
-            mode: 'reddit',
+            mode: activeFocusMode,
             topic: activePrompt,
-            reason: 'Reddit Search Mode manually enabled (using Google Search Grounding).'
+            reason: `${focusLabel} Search Mode manually enabled (using Google Search Grounding).`
           });
 
           try {
-            await streamRedditSearch(
+            await streamGroundingSearch(
               activePrompt,
-              (text) => sendEvent('token', { model: 'summary', text }), // reddit writes directly to summary box
+              activeFocusMode,
+              (text) => sendEvent('token', { model: 'summary', text }), // focus mode writes directly to summary box
               (summaryData) => {
                 const finalResult = {
-                  source: 'reddit',
-                  label: 'Reddit Search & Sentiment',
+                  source: activeFocusMode,
+                  label: `${focusLabel} Search & Sentiment`,
                   text: summaryData.text,
                   citations: summaryData.citations,
                   latencyMs: Date.now() - startTime,
@@ -68,23 +73,31 @@ export async function POST(request: Request) {
                   outputTokens: summaryData.outputTokens,
                   cost: summaryData.cost
                 };
-                sendEvent('completed', { model: 'reddit', result: finalResult });
+                sendEvent('completed', { model: activeFocusMode, result: finalResult });
                 sendEvent('summary_completed', { summary: summaryData.text });
               },
               async (err) => {
-                console.error('[API/Ask Stream] Reddit search failed, executing Make Webhook backup...', err);
+                console.error(`[API/Ask Stream] ${focusLabel} search failed, executing Make Webhook backup...`, err);
                 sendEvent('status', { status: 'falling_back_to_webhook' });
 
+                // Construct mode-specific search query for Claude/GPT backup via Make
+                let fallbackQuery = `Search ${activeFocusMode} and analyze community discussions about: ${activePrompt}`;
+                if (activeFocusMode === 'github') {
+                  fallbackQuery = `Search GitHub for code, repositories, and developer documentation related to: ${activePrompt}`;
+                } else if (activeFocusMode === 'youtube') {
+                  fallbackQuery = `Search YouTube for video reviews, tutorials, and summaries related to: ${activePrompt}`;
+                }
+
                 try {
-                  const webhookResponse = await callResearchWebhook(`Search Reddit and analyze community discussions about: ${activePrompt}`);
+                  const webhookResponse = await callResearchWebhook(fallbackQuery);
                   if (!webhookResponse.results || webhookResponse.results.length === 0) {
                     throw new Error('Fallback webhook returned empty results.');
                   }
                   
                   const val = webhookResponse.results[0];
                   const finalResult = {
-                    source: 'reddit-fallback',
-                    label: `${val.label || 'Claude/GPT'} (Reddit Fallback)`,
+                    source: `${activeFocusMode}-fallback`,
+                    label: `${val.label || 'Claude/GPT'} (${focusLabel} Fallback)`,
                     text: val.text,
                     citations: val.citations || [],
                     latencyMs: Date.now() - startTime,
@@ -93,20 +106,20 @@ export async function POST(request: Request) {
                     cost: val.cost || 0
                   };
 
-                  sendEvent('completed', { model: 'reddit-fallback', result: finalResult });
+                  sendEvent('completed', { model: `${activeFocusMode}-fallback`, result: finalResult });
                   sendEvent('summary_completed', { summary: val.text });
                 } catch (fallbackErr: any) {
-                  console.error('[API/Ask Stream] Reddit fallback webhook also failed:', fallbackErr);
+                  console.error(`[API/Ask Stream] ${focusLabel} fallback webhook also failed:`, fallbackErr);
                   const cleanErr = cleanErrorMessage(fallbackErr, 'Make Webhook');
                   sendEvent('error', {
-                    model: 'reddit',
-                    error: `Reddit search limits reached: both Gemini and Webhook fallbacks failed. (${cleanErr})`
+                    model: activeFocusMode,
+                    error: `${focusLabel} search limits reached: both Gemini and Webhook fallbacks failed. (${cleanErr})`
                   });
                 }
               }
             );
           } catch (err: any) {
-            sendEvent('error', { model: 'reddit', error: err.message || String(err) });
+            sendEvent('error', { model: activeFocusMode, error: err.message || String(err) });
           }
 
           controller.close();

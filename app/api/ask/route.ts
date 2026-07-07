@@ -47,8 +47,42 @@ export async function POST(request: Request) {
           summary: summaryData.text
         });
       } catch (err: any) {
-        console.error('[API/Ask] Reddit mode error:', err);
-        return NextResponse.json({ error: err.message || 'Reddit search failed' }, { status: 500 });
+        console.error('[API/Ask] Gemini Reddit search failed, falling back to Make.com Research Webhook:', err);
+        try {
+          // Fallback to Make.com Research Webhook which runs Claude/ChatGPT
+          const webhookResponse = await callResearchWebhook(`Search Reddit and analyze community discussions about: ${prompt}`);
+          
+          if (!webhookResponse.results || webhookResponse.results.length === 0) {
+            throw new Error('Fallback webhook returned no results.');
+          }
+
+          const val = webhookResponse.results[0];
+          const elapsedMs = Date.now() - startTime;
+
+          const results = [{
+            source: 'reddit-fallback',
+            label: `${val.label || 'Claude/GPT'} (Reddit Fallback)`,
+            text: val.text,
+            citations: val.citations || [],
+            latencyMs: elapsedMs,
+            inputTokens: val.inputTokens || 0,
+            outputTokens: val.outputTokens || 0,
+            cost: val.cost || 0
+          }];
+
+          return NextResponse.json({
+            mode: 'reddit',
+            topic: prompt,
+            reason: 'Reddit Search Mode fell back to Make Webhook due to Gemini API limits.',
+            results,
+            summary: val.text
+          });
+        } catch (fallbackErr: any) {
+          console.error('[API/Ask] Reddit fallback webhook failed:', fallbackErr);
+          return NextResponse.json({ 
+            error: `Reddit search failed. Gemini limits reached, and Make Webhook fallback failed: ${fallbackErr.message || fallbackErr}` 
+          }, { status: 500 });
+        }
       }
     }
 

@@ -17,9 +17,22 @@ const DEFAULT_MAKE_MODELS = ['claude-3-5-sonnet', 'gpt-4o'];
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { prompt, isRedditMode } = body;
+    const { prompt, messages, isRedditMode } = body;
 
-    if (!prompt) {
+    // Separate active prompt from chat history context
+    let activePrompt = '';
+    let chatHistory: { role: string; content: string }[] = [];
+
+    if (messages && Array.isArray(messages) && messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+      activePrompt = lastMsg.content;
+      chatHistory = messages.slice(0, -1);
+    } else {
+      activePrompt = prompt || '';
+      chatHistory = [];
+    }
+
+    if (!activePrompt) {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
     }
 
@@ -36,13 +49,13 @@ export async function POST(request: Request) {
         if (isRedditMode) {
           sendEvent('info', {
             mode: 'reddit',
-            topic: prompt,
+            topic: activePrompt,
             reason: 'Reddit Search Mode manually enabled (using Google Search Grounding).'
           });
 
           try {
             await streamRedditSearch(
-              prompt,
+              activePrompt,
               (text) => sendEvent('token', { model: 'summary', text }), // reddit writes directly to summary box
               (summaryData) => {
                 const finalResult = {
@@ -63,7 +76,7 @@ export async function POST(request: Request) {
                 sendEvent('status', { status: 'falling_back_to_webhook' });
 
                 try {
-                  const webhookResponse = await callResearchWebhook(`Search Reddit and analyze community discussions about: ${prompt}`);
+                  const webhookResponse = await callResearchWebhook(`Search Reddit and analyze community discussions about: ${activePrompt}`);
                   if (!webhookResponse.results || webhookResponse.results.length === 0) {
                     throw new Error('Fallback webhook returned empty results.');
                   }
@@ -101,7 +114,7 @@ export async function POST(request: Request) {
         }
 
         // 2. Default Intelligent Routing Paths
-        const decision = decideMode(prompt);
+        const decision = decideMode(activePrompt);
         sendEvent('info', {
           mode: decision.mode,
           topic: decision.topic,
@@ -116,6 +129,7 @@ export async function POST(request: Request) {
           // Trigger all calls concurrently (direct streams + Make webhook)
           const geminiPromise = streamGeminiDirect(
             decision.topic,
+            chatHistory,
             (text) => sendEvent('token', { model: 'gemini-2.5-flash', text }),
             (res) => {
               sendEvent('completed', { model: 'gemini-2.5-flash', result: res });
@@ -130,6 +144,7 @@ export async function POST(request: Request) {
 
           const groqPromise = streamGroqDirect(
             decision.topic,
+            chatHistory,
             (text) => sendEvent('token', { model: 'llama-3.3-70b-versatile', text }),
             (res) => {
               sendEvent('completed', { model: 'llama-3.3-70b-versatile', result: res });
@@ -142,7 +157,7 @@ export async function POST(request: Request) {
             }
           );
 
-          const webhookPromise = callCompareWebhook(decision.topic, DEFAULT_MAKE_MODELS)
+          const webhookPromise = callCompareWebhook(decision.topic, DEFAULT_MAKE_MODELS, chatHistory)
             .then((val) => {
               val.results.forEach((res) => {
                 sendEvent('completed', { model: res.source, result: res });

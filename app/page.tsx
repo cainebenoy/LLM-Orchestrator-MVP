@@ -9,6 +9,8 @@ export default function Home() {
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
+  const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
+  
   // Results state
   const [results, setResults] = useState<any[]>([]);
   const [summary, setSummary] = useState<string | null>(null);
@@ -39,9 +41,23 @@ export default function Home() {
     setSummary(run.summary);
     setReason(run.reason);
     setIsRedditMode(run.mode === 'reddit');
+    setMessages([
+      { role: 'user', content: run.prompt },
+      { role: 'assistant', content: run.summary || 'Completed' }
+    ]);
     if (window.innerWidth < 1024) {
       setIsSidebarOpen(false); // Close sidebar on mobile after selection
     }
+  };
+
+  const resetChat = () => {
+    setPrompt('');
+    setResults([]);
+    setSummary(null);
+    setMode('');
+    setReason(null);
+    setMessages([]);
+    setError(null);
   };
 
   const toggleDarkMode = () => {
@@ -63,6 +79,13 @@ export default function Home() {
     setMode('');
     setReason(null);
 
+    const userMessage = { role: 'user' as const, content: prompt.trim() };
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
+    
+    // Clear input box immediately for next chat turn
+    setPrompt('');
+
     let currentResults: any[] = [];
     let currentSummary = '';
     let currentMode = '';
@@ -72,7 +95,7 @@ export default function Home() {
       const response = await fetch('/api/ask', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, isRedditMode }),
+        body: JSON.stringify({ messages: updatedMessages, isRedditMode }),
       });
       
       if (!response.ok) {
@@ -200,14 +223,21 @@ export default function Home() {
         }
       }
 
-      // Save complete run to history
+      // Save complete run to history using active prompt text
       saveRun({
-        prompt,
+        prompt: userMessage.content,
         mode: currentMode || 'compare',
         results: currentResults.map(({ isLoading, ...rest }) => rest), // Clean loading flags
         summary: currentSummary || null,
         reason: currentReason || null,
       });
+
+      // Append assistant's comparison answer to history for next turns
+      const assistantMessage = { 
+        role: 'assistant' as const, 
+        content: currentSummary || 'Orchestration complete.' 
+      };
+      setMessages(prev => [...prev, assistantMessage]);
       
     } catch (err: any) {
       console.error(err);
@@ -334,7 +364,7 @@ export default function Home() {
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setIsRedditMode(!isRedditMode)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all duration-300 ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all duration-305 ${
                     isRedditMode
                       ? 'bg-orange-500/10 border-orange-500/30 text-orange-600 dark:text-orange-400 shadow-sm shadow-orange-500/5'
                       : 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
@@ -344,6 +374,19 @@ export default function Home() {
                   <Flame className={`w-3.5 h-3.5 ${isRedditMode ? 'text-orange-500 animate-pulse' : ''}`} />
                   Reddit Search
                 </button>
+                
+                {/* New Chat / Reset conversation */}
+                {(messages.length > 0 || results.length > 0) && (
+                  <button
+                    onClick={resetChat}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border bg-zinc-100 dark:bg-zinc-805 border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition-all"
+                    title="Start a new chat topic"
+                  >
+                    <RefreshCcw className="w-3 h-3 text-zinc-400" />
+                    New Chat
+                  </button>
+                )}
+
                 <div className="hidden sm:flex text-xs text-zinc-400 font-medium gap-4 border-l border-zinc-200 dark:border-zinc-800 pl-4">
                   <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Parallel</span>
                   <span className="flex items-center gap-1"><MessageSquare className="w-3.5 h-3.5" /> Multi-LLM</span>

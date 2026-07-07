@@ -123,7 +123,8 @@ async function fetchWithTimeout(
  */
 export async function callCompareWebhook(
   prompt: string,
-  selectedModels: string[]
+  selectedModels: string[],
+  history?: { role: string; content: string }[]
 ): Promise<WebhookResponse> {
   const url = process.env.MAKE_COMPARE_WEBHOOK_URL || process.env.MAKE_WEBHOOK_URL;
   if (!url) {
@@ -132,7 +133,7 @@ export async function callCompareWebhook(
 
   const startTime = Date.now();
   console.log(`[Gateway] Initiating Compare Webhook call to: ${url}`);
-  console.log(`[Gateway] Payload:`, { prompt, models: selectedModels });
+  console.log(`[Gateway] Payload:`, { prompt, history: history || [], models: selectedModels });
 
   try {
     const response = await fetchWithTimeout(
@@ -144,6 +145,7 @@ export async function callCompareWebhook(
         },
         body: JSON.stringify({
           prompt,
+          history: history || [],
           models: selectedModels,
         }),
       },
@@ -429,6 +431,7 @@ ${context}`;
  */
 export async function streamGeminiDirect(
   prompt: string,
+  history: { role: string; content: string }[],
   onToken: (text: string) => void,
   onComplete: (result: WebhookResult) => void,
   onError: (errorMsg: string) => void
@@ -443,7 +446,16 @@ export async function streamGeminiDirect(
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    const result = await model.generateContentStream(prompt);
+    
+    // Map history to Gemini's format: { role: 'user' | 'model', parts: [{ text: string }] }
+    const geminiHistory = (history || []).map(m => ({
+      role: m.role === 'user' ? 'user' : 'model',
+      parts: [{ text: m.content }]
+    }));
+
+    // Start multi-turn chat natively
+    const chat = model.startChat({ history: geminiHistory });
+    const result = await chat.sendMessageStream(prompt);
     
     let fullText = '';
     for await (const chunk of result.stream) {
@@ -477,6 +489,7 @@ export async function streamGeminiDirect(
  */
 export async function streamGroqDirect(
   prompt: string,
+  history: { role: string; content: string }[],
   onToken: (text: string) => void,
   onComplete: (result: WebhookResult) => void,
   onError: (errorMsg: string) => void
@@ -494,8 +507,17 @@ export async function streamGroqDirect(
       baseURL: 'https://api.groq.com/openai/v1',
     });
 
+    // Map history to standard chat completion messages format
+    const groqMessages = [
+      ...(history || []).map(m => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content
+      })),
+      { role: 'user' as const, content: prompt }
+    ];
+
     const stream = await groq.chat.completions.create({
-      messages: [{ role: 'user', content: prompt }],
+      messages: groqMessages,
       model: 'llama-3.3-70b-versatile',
       stream: true,
     });

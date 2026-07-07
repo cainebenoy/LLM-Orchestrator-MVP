@@ -357,7 +357,30 @@ ${context}`;
     const result = await model.generateContent(sysPrompt);
     return result.response.text();
   } catch (error: any) {
-    console.error('[Gateway] Synthesis error:', error);
-    return `Summary generation failed: ${error.message}`;
+    console.error('[Gateway] Gemini synthesis failed, attempting fallback to Groq/Llama:', error);
+    
+    // Check if Groq key exists for fallback
+    const groqKey = process.env.GROQ_API_KEY;
+    if (!groqKey || groqKey.includes('your-groq')) {
+      return `Summary generation failed (Gemini limits reached: ${error.message || 'Quota/API Error'}). Fallback to Groq failed because GROQ_API_KEY is not configured in .env.local.`;
+    }
+
+    try {
+      const groq = new OpenAI({
+        apiKey: groqKey,
+        baseURL: 'https://api.groq.com/openai/v1',
+      });
+
+      const completion = await groq.chat.completions.create({
+        messages: [{ role: 'user', content: sysPrompt }],
+        model: 'llama-3.3-70b-versatile',
+      });
+
+      const fallbackText = completion.choices[0]?.message?.content || '';
+      return `*(Note: Summarized via Llama 3.3 70B due to Gemini API limit)*\n\n${fallbackText}`;
+    } catch (groqError: any) {
+      console.error('[Gateway] Fallback to Groq also failed:', groqError);
+      return `Summary generation failed. Gemini limit reached and Groq fallback errored: ${groqError.message || groqError}`;
+    }
   }
 }

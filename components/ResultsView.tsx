@@ -147,7 +147,7 @@ export default function ResultsView({ mode, summary, reason, results }: ResultsV
       {mode === 'compare' && isExpanded && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-slide-down">
           {results.map((result, idx) => (
-            <div key={idx} className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-md flex flex-col h-full transition-all duration-300 hover:shadow-xl">
+            <div key={idx} className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-md flex flex-col h-full transition-all duration-300 hover:shadow-xl min-w-0">
               <div className="mb-4 flex justify-between items-start">
                 <div>
                   <h3 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100 capitalize">

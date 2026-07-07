@@ -386,7 +386,7 @@ export default function Home() {
         )}
 
         {/* Loading State */}
-        {isLoading && (
+        {isLoading && results.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16 gap-4 text-zinc-500 dark:text-zinc-400 animate-pulse">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
             <p className="font-medium text-lg">Orchestrating AI models...</p>
@@ -394,7 +394,7 @@ export default function Home() {
         )}
 
         {/* Results View */}
-        {results.length > 0 && !isLoading && (
+        {results.length > 0 && (
           <ResultsView 
             mode={mode} 
             summary={summary}

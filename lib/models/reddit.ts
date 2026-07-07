@@ -24,15 +24,36 @@ You must do a deep review of the results, examining at least 10-15 different thr
 Summarize the general consensus, differing opinions, sentiment (positive/negative/neutral), and key talking points found in those Reddit threads. 
 Reference specific subreddits (e.g., r/nextjs) or threads when summarizing. Focus strictly on Reddit discussions. Format your response in markdown.`;
 
+  let result;
+  let modelName = 'gemini-2.5-flash';
+  const genAI = new GoogleGenerativeAI(apiKey);
+
   try {
-    const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ 
-      model: 'gemini-2.5-flash',
+      model: modelName,
       // Enable Google Search grounding tool (cast to any for TS compiler compliance)
       tools: [{ googleSearch: {} }] as any
     });
 
-    const result = await model.generateContent(sysPrompt);
+    result = await model.generateContent(sysPrompt);
+  } catch (error: any) {
+    console.warn(`[Reddit] Gemini 2.5 Flash failed, attempting fallback to Gemini 1.5 Flash:`, error);
+    modelName = 'gemini-1.5-flash';
+    
+    try {
+      const model = genAI.getGenerativeModel({ 
+        model: modelName,
+        tools: [{ googleSearch: {} }] as any
+      });
+      
+      result = await model.generateContent(sysPrompt);
+    } catch (fallbackError: any) {
+      console.error('[Reddit] Both Gemini 2.5 and 1.5 models failed:', fallbackError);
+      throw new Error(`Reddit search failed: ${error.message || 'API Limit reached'}. Fallback model error: ${fallbackError.message}`);
+    }
+  }
+
+  try {
     const text = result.response.text();
     
     // Extract live web citations returned by Google Search Grounding

@@ -5,7 +5,8 @@ import {
   callResearchWebhook, 
   callGeminiDirect, 
   callGroqDirect,
-  synthesizeSummary
+  synthesizeSummary,
+  cleanErrorMessage
 } from '@/lib/models/gateway';
 import { summarizeRedditWithSearch } from '@/lib/models/reddit';
 
@@ -79,8 +80,9 @@ export async function POST(request: Request) {
           });
         } catch (fallbackErr: any) {
           console.error('[API/Ask] Reddit fallback webhook failed:', fallbackErr);
+          const cleanErr = cleanErrorMessage(fallbackErr, 'Make Webhook');
           return NextResponse.json({ 
-            error: `Reddit search failed. Gemini limits reached, and Make Webhook fallback failed: ${fallbackErr.message || fallbackErr}` 
+            error: `Reddit search limits reached: both Gemini and Make Webhook fallbacks failed. (${cleanErr})` 
           }, { status: 500 });
         }
       }
@@ -108,6 +110,22 @@ export async function POST(request: Request) {
         finalResults.push(...(val.results || []));
       } else {
         console.error('Make Webhook failed in Compare mode', webhookRes.reason);
+        const friendlyError = cleanErrorMessage(webhookRes.reason, 'Webhook Service');
+        // Push friendly error cards for both Make-powered models
+        finalResults.push(
+          {
+            source: 'claude-3-5-sonnet',
+            label: 'Claude 3.5 Sonnet',
+            text: '',
+            error: `${friendlyError} (Claude via Webhook)`
+          },
+          {
+            source: 'gpt-4o',
+            label: 'ChatGPT 4o',
+            text: '',
+            error: `${friendlyError} (GPT via Webhook)`
+          }
+        );
       }
 
       // Extract Gemini result

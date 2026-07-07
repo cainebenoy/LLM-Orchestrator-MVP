@@ -54,6 +54,45 @@ export function calculateModelCost(source: string, inputTokens: number, outputTo
   return usdCost * 94.0; // Convert to Indian Rupees (INR) at 1 USD = 94.0 INR
 }
 
+/**
+ * Parses and cleans technical error messages into short, user-friendly notices.
+ * Bypasses long stacks or terminal-like raw trace lines.
+ */
+export function cleanErrorMessage(error: any, modelLabel: string): string {
+  if (!error) return `${modelLabel}: An unknown system error occurred.`;
+  const msg = typeof error === 'string' ? error : (error.message || String(error));
+  const msgLower = msg.toLowerCase();
+
+  if (msgLower.includes('quota') || msgLower.includes('429') || msgLower.includes('rate limit') || msgLower.includes('resource_exhausted')) {
+    return `${modelLabel} limit reached: API quota or rate limit exceeded. Please wait a moment.`;
+  }
+  if (msgLower.includes('api key') || msgLower.includes('api_key') || msgLower.includes('invalid api key') || msgLower.includes('key not active')) {
+    return `${modelLabel}: Invalid or inactive API key. Check .env.local configuration.`;
+  }
+  if (msgLower.includes('403') || msgLower.includes('forbidden') || msgLower.includes('permission')) {
+    return `${modelLabel}: Access blocked (HTTP 403). Check API credentials.`;
+  }
+  if (msgLower.includes('timeout') || msgLower.includes('timed out') || msgLower.includes('abort')) {
+    return `${modelLabel} timeout: Request took too long to respond.`;
+  }
+  if (msgLower.includes('insufficient_quota') || msgLower.includes('credit') || msgLower.includes('billing')) {
+    return `${modelLabel}: Billing quota finished or credit expired on this account.`;
+  }
+  if (msgLower.includes('not found') || msgLower.includes('404')) {
+    return `${modelLabel}: Webhook or endpoint not found (HTTP 404).`;
+  }
+  if (msgLower.includes('unexpected token') || msgLower.includes('accepted')) {
+    return `${modelLabel}: Webhook scenario not active or didn't return valid JSON.`;
+  }
+
+  // Truncate long technical stack trace / network messages
+  if (msg.length > 120 || msg.includes('at ') || msg.includes('FetchError') || msg.includes('__webpack_require__')) {
+    return `${modelLabel}: Service temporarily unavailable or returned a bad response.`;
+  }
+
+  return msg;
+}
+
 // Fetch with a timeout using AbortController
 async function fetchWithTimeout(
   url: string,
@@ -266,7 +305,7 @@ export async function callGeminiDirect(prompt: string): Promise<WebhookResult> {
       source: 'gemini-2.5-flash',
       label: 'Gemini 2.5 Flash',
       text: '',
-      error: error.message || 'Failed to call Gemini API directly',
+      error: cleanErrorMessage(error, 'Gemini 2.5 Flash'),
       latencyMs: Date.now() - startTime
     };
   }
@@ -320,7 +359,7 @@ export async function callGroqDirect(prompt: string): Promise<WebhookResult> {
       source: 'llama-3.3-70b-versatile',
       label: 'Llama 3.3 70B (via Groq)',
       text: '',
-      error: error.message || 'Failed to call Groq API directly',
+      error: cleanErrorMessage(error, 'Llama 3.3 70B'),
       latencyMs: Date.now() - startTime
     };
   }

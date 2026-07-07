@@ -131,9 +131,18 @@ export async function callCompareWebhook(
     throw new Error('MAKE_COMPARE_WEBHOOK_URL is not configured in environment variables');
   }
 
+  // Format history into a single transcript block for Make.com modules that only accept a single "prompt" field
+  let makePrompt = prompt;
+  if (history && history.length > 0) {
+    const transcript = history
+      .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+      .join('\n\n');
+    makePrompt = `Here is our conversation history:\n\n${transcript}\n\nUser's follow-up request:\n${prompt}`;
+  }
+
   const startTime = Date.now();
   console.log(`[Gateway] Initiating Compare Webhook call to: ${url}`);
-  console.log(`[Gateway] Payload:`, { prompt, history: history || [], models: selectedModels });
+  console.log(`[Gateway] Payload:`, { prompt: makePrompt, history: history || [], models: selectedModels });
 
   try {
     const response = await fetchWithTimeout(
@@ -144,7 +153,7 @@ export async function callCompareWebhook(
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          prompt,
+          prompt: makePrompt,
           history: history || [],
           models: selectedModels,
         }),

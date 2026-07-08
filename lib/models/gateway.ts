@@ -58,9 +58,9 @@ export function calculateModelCost(source: string, inputTokens: number, outputTo
  * Parses and cleans technical error messages into short, user-friendly notices.
  * Bypasses long stacks or terminal-like raw trace lines.
  */
-export function cleanErrorMessage(error: any, modelLabel: string): string {
+export function cleanErrorMessage(error: unknown, modelLabel: string): string {
   if (!error) return `${modelLabel}: An unknown system error occurred.`;
-  const msg = typeof error === 'string' ? error : (error.message || String(error));
+  const msg = error instanceof Error ? error.message : String(error);
   const msgLower = msg.toLowerCase();
 
   if (msgLower.includes('quota') || msgLower.includes('429') || msgLower.includes('rate limit') || msgLower.includes('resource_exhausted')) {
@@ -109,9 +109,9 @@ async function fetchWithTimeout(
     });
     clearTimeout(id);
     return response;
-  } catch (error: any) {
+  } catch (error: unknown) {
     clearTimeout(id);
-    if (error.name === 'AbortError') {
+    if (error instanceof Error && error.name === 'AbortError') {
       throw new Error(`Request timed out after ${timeoutMs / 1000} seconds`);
     }
     throw error;
@@ -171,7 +171,16 @@ export async function callCompareWebhook(
       throw new Error(`Server returned HTTP status ${response.status}`);
     }
 
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch (parseError) {
+      if (parseError instanceof SyntaxError) {
+        console.error('[Truncation Detected] Compare Webhook payload cut off mid-transfer.', parseError);
+        throw new Error('Make.com webhook reached its maximum execution time and cut off the response. Please try a simpler prompt.');
+      }
+      throw parseError;
+    }
     console.log(`[Gateway] Compare Webhook Raw Response:`, JSON.stringify(data, null, 2));
 
     if (!data || !Array.isArray(data.results)) {
@@ -179,7 +188,7 @@ export async function callCompareWebhook(
     }
 
     // Process and add metrics (latency, token estimates, cost)
-    const processedResults = data.results.map((result: any) => {
+    const processedResults = data.results.map((result: Partial<WebhookResult>) => {
       const inputEst = estimateTokenCount(prompt);
       const outputEst = estimateTokenCount(result.text || '');
 
@@ -196,7 +205,7 @@ export async function callCompareWebhook(
     });
 
     return { results: processedResults };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`[Gateway] Compare Webhook error:`, error);
     throw error;
   }
@@ -246,14 +255,23 @@ export async function callResearchWebhook(
       throw new Error(`Server returned HTTP status ${response.status}`);
     }
 
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch (parseError) {
+      if (parseError instanceof SyntaxError) {
+        console.error('[Truncation Detected] Research Webhook payload cut off mid-transfer.', parseError);
+        throw new Error('Make.com webhook reached its maximum execution time and cut off the response. Please try a simpler prompt.');
+      }
+      throw parseError;
+    }
     console.log(`[Gateway] Research Webhook Raw Response:`, JSON.stringify(data, null, 2));
 
     if (!data || !Array.isArray(data.results)) {
       throw new Error('Malformed response from research webhook: expected { results: [...] } structure');
     }
 
-    const processedResults = data.results.map((result: any) => {
+    const processedResults = data.results.map((result: Partial<WebhookResult>) => {
       const inputEst = estimateTokenCount(topic + (urlPath || ''));
       const outputEst = estimateTokenCount(result.text || '');
 
@@ -270,7 +288,7 @@ export async function callResearchWebhook(
     });
 
     return { results: processedResults };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`[Gateway] Research Webhook error:`, error);
     throw error;
   }
@@ -310,7 +328,7 @@ export async function callGeminiDirect(prompt: string): Promise<WebhookResult> {
       outputTokens,
       cost: calculateModelCost('gemini-2.5-flash', inputTokens, outputTokens)
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Gateway] Gemini direct error:', error);
     return {
       source: 'gemini-2.5-flash',
@@ -364,7 +382,7 @@ export async function callGroqDirect(prompt: string): Promise<WebhookResult> {
       outputTokens: completionTokens,
       cost: calculateModelCost('llama-3.3-70b-versatile', promptTokens, completionTokens)
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Gateway] Groq direct error:', error);
     return {
       source: 'llama-3.3-70b-versatile',
@@ -406,13 +424,13 @@ ${context}`;
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     const result = await model.generateContent(sysPrompt);
     return result.response.text();
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Gateway] Gemini synthesis failed, attempting fallback to Groq/Llama:', error);
     
     // Check if Groq key exists for fallback
     const groqKey = process.env.GROQ_API_KEY;
     if (!groqKey || groqKey.includes('your-groq')) {
-      return `Summary generation failed (Gemini limits reached: ${error.message || 'Quota/API Error'}). Fallback to Groq failed because GROQ_API_KEY is not configured in .env.local.`;
+      return `Summary generation failed (Gemini limits reached: ${(error instanceof Error ? error.message : String(error)) || 'Quota/API Error'}). Fallback to Groq failed because GROQ_API_KEY is not configured in .env.local.`;
     }
 
     try {
@@ -428,9 +446,9 @@ ${context}`;
 
       const fallbackText = completion.choices[0]?.message?.content || '';
       return `*(Note: Summarized via Llama 3.3 70B due to Gemini API limit)*\n\n${fallbackText}`;
-    } catch (groqError: any) {
+    } catch (groqError: unknown) {
       console.error('[Gateway] Fallback to Groq also failed:', groqError);
-      return `Summary generation failed. Gemini limit reached and Groq fallback errored: ${groqError.message || groqError}`;
+      return `Gemini rate limit reached and Groq fallback errored: ${(groqError instanceof Error ? groqError.message : String(groqError)) || groqError}`;
     }
   }
 }
@@ -487,7 +505,7 @@ export async function streamGeminiDirect(
       outputTokens,
       cost
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Gateway Stream] Gemini direct error:', error);
     onError(cleanErrorMessage(error, 'Gemini 2.5 Flash'));
   }
@@ -554,7 +572,7 @@ export async function streamGroqDirect(
       outputTokens,
       cost
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Gateway Stream] Groq direct error:', error);
     onError(cleanErrorMessage(error, 'Llama 3.3 70B'));
   }
@@ -606,7 +624,7 @@ ${context}`;
       onToken(chunkText);
     }
     onComplete(fullText);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Gateway Stream] Gemini synthesis failed, trying Groq fallback:', error);
     
     // Check if Groq key exists for fallback
@@ -639,9 +657,9 @@ ${context}`;
         }
       }
       onComplete(fullText);
-    } catch (groqError: any) {
+    } catch (groqError: unknown) {
       console.error('[Gateway Stream] Fallback to Groq also failed:', groqError);
-      onError(`Summary failed. Gemini limits reached and Groq fallback errored: ${groqError.message || groqError}`);
+      onError(`Summary failed. Gemini limits reached and Groq fallback errored: ${(groqError instanceof Error ? groqError.message : String(groqError)) || groqError}`);
     }
   }
 }

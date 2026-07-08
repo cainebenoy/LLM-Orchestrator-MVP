@@ -1,10 +1,43 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { estimateTokenCount, calculateModelCost } from './gateway';
+import { GeminiCandidate, GroundingChunk } from '../types';
 
-/**
- * Searches and summarizes Reddit discussions using Gemini 2.5 Flash's Google Search grounding tool.
- * This completely bypasses Reddit's strict WAF blocks and 403 errors by leveraging Google's index.
- */
+async function fetchRedditJSON(query: string): Promise<{ text: string, citations: string[] }> {
+  // Use a custom User-Agent to comply with Reddit's unauthenticated API guidelines
+  const headers = {
+    'User-Agent': 'LLM-Orchestrator-MVP/1.0.0 (Local Testing) /u/developer'
+  };
+  const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&limit=10&sort=relevance`;
+  
+  const response = await fetch(url, { headers, next: { revalidate: 60 } }); // small cache
+  if (!response.ok) {
+    if (response.status === 429) throw new Error('Reddit API Rate Limited (HTTP 429). Please try again later.');
+    if (response.status === 403) throw new Error('Reddit API Blocked (HTTP 403). Server IP is blocked from unauthenticated access.');
+    throw new Error(`Reddit API Error: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  const children = data?.data?.children || [];
+  
+  let combinedText = `--- REDDIT SEARCH RESULTS FOR: "${query}" ---\n\n`;
+  const citations: string[] = [];
+  
+  for (const child of children) {
+    const post = child.data;
+    if (!post) continue;
+    combinedText += `Title: ${post.title}\n`;
+    combinedText += `Subreddit: r/${post.subreddit}\n`;
+    combinedText += `Upvotes: ${post.ups} | Comments: ${post.num_comments}\n`;
+    if (post.selftext) {
+      combinedText += `Content: ${post.selftext.substring(0, 500)}...\n`;
+    }
+    combinedText += `URL: https://reddit.com${post.permalink}\n\n`;
+    citations.push(`https://reddit.com${post.permalink}`);
+  }
+  
+  return { text: combinedText, citations: Array.from(new Set(citations)) };
+}
+
 export async function summarizeRedditWithSearch(prompt: string): Promise<{
   text: string;
   citations: string[];
@@ -17,153 +50,38 @@ export async function summarizeRedditWithSearch(prompt: string): Promise<{
     throw new Error('GEMINI_API_KEY is missing or invalid in .env.local');
   }
 
-  // Instruct Gemini to target reddit.com search queries
-  const sysPrompt = `Perform a live search on Google specifically targeting reddit.com threads and discussions.
-Search widely for discussions, opinions, and threads related to the topic: "${prompt}". 
-You must do a deep review of the results, examining at least 10-15 different threads, subreddits, and comment sections to capture a comprehensive view.
-Summarize the general consensus, differing opinions, sentiment (positive/negative/neutral), and key talking points found in those Reddit threads. 
-Reference specific subreddits (e.g., r/nextjs) or threads when summarizing. Focus strictly on Reddit discussions. Format your response in markdown.`;
+  // 1. Fetch from Reddit natively
+  const { text: redditContext, citations } = await fetchRedditJSON(prompt);
+  
+  // 2. Synthesize using standard LLM
+  const sysPrompt = `You are a Reddit research assistant. I will provide you with raw JSON-extracted post data from a Reddit search query for "${prompt}". 
+Please do a deep review of the results, summarize the general consensus, differing opinions, sentiment (positive/negative/neutral), and key talking points found in those Reddit threads. 
+Reference specific subreddits (e.g., r/nextjs) or threads when summarizing. Format your response in markdown.
 
-  let result;
-  let modelName = 'gemini-2.5-flash';
+RAW REDDIT DATA:
+${redditContext}`;
+
   const genAI = new GoogleGenerativeAI(apiKey);
-
+  const modelName = 'gemini-2.5-flash'; // no grounding needed
+  
   try {
-    const model = genAI.getGenerativeModel({ 
-      model: modelName,
-      // Enable Google Search grounding tool (cast to any for TS compiler compliance)
-      tools: [{ googleSearch: {} }] as any
-    });
-
-    result = await model.generateContent(sysPrompt);
-  } catch (error: any) {
-    console.warn(`[Reddit] Gemini 2.5 Flash failed, attempting fallback to Gemini 1.5 Flash:`, error);
-    modelName = 'gemini-1.5-flash';
+    const model = genAI.getGenerativeModel({ model: modelName });
+    const result = await model.generateContent(sysPrompt);
+    const responseText = result.response.text();
     
-    try {
-      const model = genAI.getGenerativeModel({ 
-        model: modelName,
-        tools: [{ googleSearch: {} }] as any
-      });
-      
-      result = await model.generateContent(sysPrompt);
-    } catch (fallbackError: any) {
-      console.error('[Reddit] Both Gemini 2.5 and 1.5 models failed:', fallbackError);
-      throw new Error(`Reddit search failed: ${error.message || 'API Limit reached'}. Fallback model error: ${fallbackError.message}`);
-    }
-  }
-
-  try {
-    const text = result.response.text();
-    
-    // Extract live web citations returned by Google Search Grounding
-    const citations: string[] = [];
-    const metadata = (result.response as any).candidates?.[0]?.groundingMetadata;
-    if (metadata?.groundingChunks) {
-      metadata.groundingChunks.forEach((chunk: any) => {
-        if (chunk.web?.uri) {
-          citations.push(chunk.web.uri);
-        }
-      });
-    }
-
     const inputTokens = estimateTokenCount(sysPrompt);
-    const outputTokens = estimateTokenCount(text);
-    const cost = calculateModelCost('gemini-2.5-flash', inputTokens, outputTokens);
-
-    return { 
-      text, 
-      citations: Array.from(new Set(citations)), // Deduplicate links
-      inputTokens, 
-      outputTokens, 
-      cost 
-    };
-  } catch (error: any) {
-    console.error('[Reddit] Search Grounding failed:', error);
-    throw error;
-  }
-}
-
-/**
- * Stream Reddit search and sentiment summary token-by-token.
- */
-export async function streamRedditSearch(
-  prompt: string,
-  onToken: (text: string) => void,
-  onComplete: (summaryData: { text: string; citations: string[]; inputTokens: number; outputTokens: number; cost: number }) => void,
-  onError: (errorMsg: string) => void
-): Promise<void> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey.includes('your-gemini')) {
-    onError('GEMINI_API_KEY is missing or invalid in .env.local');
-    return;
-  }
-
-  const sysPrompt = `Perform a live search on Google specifically targeting reddit.com threads and discussions.
-Search widely for discussions, opinions, and threads related to the topic: "${prompt}". 
-You must do a deep review of the results, examining at least 10-15 different threads, subreddits, and comment sections to capture a comprehensive view.
-Summarize the general consensus, differing opinions, sentiment (positive/negative/neutral), and key talking points found in those Reddit threads. 
-Reference specific subreddits (e.g., r/nextjs) or threads when summarizing. Focus strictly on Reddit discussions. Format your response in markdown.`;
-
-  let result;
-  let modelName = 'gemini-2.5-flash';
-  const genAI = new GoogleGenerativeAI(apiKey);
-
-  try {
-    const model = genAI.getGenerativeModel({ 
-      model: modelName,
-      tools: [{ googleSearch: {} }] as any
-    });
-    result = await model.generateContentStream(sysPrompt);
-  } catch (error: any) {
-    console.warn(`[Reddit Stream] Gemini 2.5 Flash failed, trying Gemini 1.5 Flash:`, error);
-    modelName = 'gemini-1.5-flash';
-    
-    try {
-      const model = genAI.getGenerativeModel({ 
-        model: modelName,
-        tools: [{ googleSearch: {} }] as any
-      });
-      result = await model.generateContentStream(sysPrompt);
-    } catch (fallbackError: any) {
-      console.error('[Reddit Stream] Both Gemini 2.5 and 1.5 models failed:', fallbackError);
-      onError(`Reddit search limits reached: Gemini rate limit hit. (${fallbackError.message || fallbackError})`);
-      return;
-    }
-  }
-
-  try {
-    let fullText = '';
-    for await (const chunk of result.stream) {
-      const chunkText = chunk.text();
-      fullText += chunkText;
-      onToken(chunkText);
-    }
-
-    const citations: string[] = [];
-    const responseData = await result.response;
-    const metadata = (responseData as any).candidates?.[0]?.groundingMetadata;
-    if (metadata?.groundingChunks) {
-      metadata.groundingChunks.forEach((chunk: any) => {
-        if (chunk.web?.uri) {
-          citations.push(chunk.web.uri);
-        }
-      });
-    }
-
-    const inputTokens = estimateTokenCount(sysPrompt);
-    const outputTokens = estimateTokenCount(fullText);
+    const outputTokens = estimateTokenCount(responseText);
     const cost = calculateModelCost(modelName, inputTokens, outputTokens);
-
-    onComplete({
-      text: fullText,
-      citations: Array.from(new Set(citations)),
+    
+    return {
+      text: responseText,
+      citations,
       inputTokens,
       outputTokens,
       cost
-    });
-  } catch (error: any) {
-    console.error('[Reddit Stream] Content collection failed:', error);
-    onError(error.message || 'Failed to stream search grounding content.');
+    };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(`LLM Synthesis Failed: ${msg}`);
   }
 }

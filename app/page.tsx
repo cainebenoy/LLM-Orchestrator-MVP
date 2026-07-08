@@ -4,13 +4,15 @@ import { useState, useEffect } from 'react';
 import { useHistory } from '@/lib/hooks/useHistory';
 import { useTheme } from 'next-themes';
 import ResultsView from '@/components/ResultsView';
+import { ResultNode } from '@/lib/types';
 
 export default function Home() {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   
   useEffect(() => {
-    setMounted(true);
+    const timer = setTimeout(() => setMounted(true), 0);
+    return () => clearTimeout(timer);
   }, []);
 
   const [prompt, setPrompt] = useState('');
@@ -19,7 +21,7 @@ export default function Home() {
   const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
   
   // Results state
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<ResultNode[]>([]);
   const [summary, setSummary] = useState<string | null>(null);
   const [mode, setMode] = useState<string>('');
   const [reason, setReason] = useState<string | null>(null);
@@ -31,9 +33,12 @@ export default function Home() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   useEffect(() => {
-    if (window.innerWidth < 768) {
-      setIsSidebarOpen(false);
-    }
+    const timer = setTimeout(() => {
+      if (window.innerWidth < 768) {
+        setIsSidebarOpen(false);
+      }
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   // Micro-interactions and side effects
@@ -103,7 +108,7 @@ export default function Home() {
     let currentResults: any[] = [];
     let currentSummary = '';
     let currentMode = '';
-    let currentReason = '';
+    let currentReason: string | null = null;
     
     try {
       const response = await fetch('/api/ask', {
@@ -141,18 +146,18 @@ export default function Home() {
           if (!line || !line.startsWith('data: ')) continue;
 
           try {
-            const parsed = JSON.parse(line.slice(6));
+            const parsed = JSON.parse(line.slice(6)) as Record<string, unknown>;
 
             switch (parsed.type) {
               case 'info':
-                setMode(parsed.mode || 'compare');
-                setReason(parsed.reason || null);
-                currentMode = parsed.mode || 'compare';
-                currentReason = parsed.reason || null;
+                setMode(typeof parsed.mode === 'string' ? parsed.mode : 'compare');
+                setReason(typeof parsed.reason === 'string' ? parsed.reason : null);
+                currentMode = typeof parsed.mode === 'string' ? parsed.mode : 'compare';
+                currentReason = typeof parsed.reason === 'string' ? parsed.reason : null;
 
                 // Pre-populate card placeholders with loaders so layout is instant
                 if (currentMode === 'compare') {
-                  const placeholders = [
+                  const placeholders: ResultNode[] = [
                     { source: 'claude-3-5-sonnet', label: 'Claude 3.5 Sonnet', text: '', isLoading: true },
                     { source: 'gpt-4o', label: 'ChatGPT 4o', text: '', isLoading: true },
                     { source: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', text: '', isLoading: true },
@@ -161,25 +166,25 @@ export default function Home() {
                   setResults(placeholders);
                   currentResults = placeholders;
                 } else if (currentMode === 'reddit') {
-                  const placeholders = [
+                  const placeholders: ResultNode[] = [
                     { source: 'reddit', label: 'Reddit Search & Sentiment', text: '', isLoading: true }
                   ];
                   setResults(placeholders);
                   currentResults = placeholders;
                 } else if (currentMode === 'github') {
-                  const placeholders = [
+                  const placeholders: ResultNode[] = [
                     { source: 'github', label: 'GitHub Search & Code Analysis', text: '', isLoading: true }
                   ];
                   setResults(placeholders);
                   currentResults = placeholders;
                 } else if (currentMode === 'youtube') {
-                  const placeholders = [
+                  const placeholders: ResultNode[] = [
                     { source: 'youtube', label: 'YouTube Search & Video Review', text: '', isLoading: true }
                   ];
                   setResults(placeholders);
                   currentResults = placeholders;
                 } else if (currentMode === 'research') {
-                  const placeholders = [
+                  const placeholders: ResultNode[] = [
                     { source: 'research', label: 'Live Research Report', text: '', isLoading: true }
                   ];
                   setResults(placeholders);
@@ -208,12 +213,12 @@ export default function Home() {
                 if (exists) {
                   currentResults = currentResults.map(r => {
                     if (r.source === parsed.model) {
-                      return { ...r, ...parsed.result, isLoading: false };
+                      return { ...r, ...(parsed.result as object), isLoading: false };
                     }
                     return r;
                   });
                 } else {
-                  currentResults.push({ ...parsed.result, isLoading: false });
+                  currentResults.push({ ...(parsed.result as object), isLoading: false });
                 }
                 setResults(currentResults);
                 break;
@@ -222,10 +227,10 @@ export default function Home() {
                 if (parsed.model === 'summary') {
                   currentSummary = `Summary generation failed: ${parsed.error}`;
                   setSummary(currentSummary);
-                } else if (['reddit', 'github', 'youtube', 'reddit-fallback', 'github-fallback', 'youtube-fallback'].includes(parsed.model)) {
+                } else if (['reddit', 'github', 'youtube', 'reddit-fallback', 'github-fallback', 'youtube-fallback'].includes(parsed.model as string)) {
                   currentSummary = `Search grounding failed: ${parsed.error}`;
                   setSummary(currentSummary);
-                  setError(parsed.error);
+                  setError(parsed.error ? String(parsed.error) : null);
                 } else {
                   currentResults = currentResults.map(r => {
                     if (r.source === parsed.model) {
@@ -238,8 +243,8 @@ export default function Home() {
                 break;
 
               case 'summary_completed':
-                currentSummary = parsed.summary;
-                setSummary(parsed.summary);
+                currentSummary = typeof parsed.summary === 'string' ? parsed.summary : '';
+                setSummary(typeof parsed.summary === 'string' ? parsed.summary : '');
                 break;
 
               case 'status':
@@ -268,9 +273,10 @@ export default function Home() {
       };
       setMessages(prev => [...prev, assistantMessage]);
       
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message);
+    } catch (err: unknown) {
+      console.error('Request failed:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
     } finally {
       setIsLoading(false);
     }

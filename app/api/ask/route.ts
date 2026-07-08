@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
-        const sendEvent = (type: string, data: any) => {
+        const sendEvent = (type: string, data: Record<string, unknown>) => {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type, ...data })}\n\n`));
         };
 
@@ -108,7 +108,7 @@ export async function POST(request: Request) {
 
                   sendEvent('completed', { model: activeFocusMode, result: finalResult });
                   sendEvent('summary_completed', { summary: val.text });
-                } catch (fallbackErr: any) {
+                } catch (fallbackErr: unknown) {
                   console.error(`[API/Ask Stream] ${focusLabel} fallback webhook also failed:`, fallbackErr);
                   const cleanErr = cleanErrorMessage(fallbackErr, 'Make Webhook');
                   sendEvent('error', {
@@ -118,8 +118,8 @@ export async function POST(request: Request) {
                 }
               }
             );
-          } catch (err: any) {
-            sendEvent('error', { model: activeFocusMode, error: err.message || String(err) });
+          } catch (err: unknown) {
+            sendEvent('error', { model: activeFocusMode, error: err instanceof Error ? err.message : String(err) });
           }
 
           controller.close();
@@ -177,7 +177,7 @@ export async function POST(request: Request) {
                 finalResults.push(res);
               });
             })
-            .catch((err) => {
+            .catch((err: unknown) => {
               console.error('Make Webhook failed in Compare mode', err);
               const friendlyError = cleanErrorMessage(err, 'Webhook Service');
               const claudeErr = {
@@ -226,7 +226,7 @@ export async function POST(request: Request) {
             } else {
               throw new Error('Research Webhook returned empty results.');
             }
-          } catch (err: any) {
+          } catch (err: unknown) {
             console.error('[API/Ask Stream] Research mode error:', err);
             const friendlyError = cleanErrorMessage(err, 'Research Webhook');
             sendEvent('error', { model: 'research', error: friendlyError });
@@ -248,7 +248,7 @@ export async function POST(request: Request) {
       },
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[API/Ask] Route stream setup failed:', error);
     return NextResponse.json({ error: 'Failed to establish stream connection.' }, { status: 500 });
   }

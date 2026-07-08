@@ -16,11 +16,11 @@ export async function POST(request: Request) {
 
     const result = await callCompareWebhook(prompt, models);
     return NextResponse.json(result);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[API/Compare] Route handler error:', error);
     
     let status = 500;
-    let errorMessage = error.message || 'Comparison failed, please try again.';
+    let errorMessage = error instanceof Error ? error.message : String(error) || 'Comparison failed, please try again.';
 
     if (errorMessage.includes('timed out')) {
       status = 504;

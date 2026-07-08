@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { estimateTokenCount, calculateModelCost, cleanErrorMessage, WebhookResult } from './gateway';
+import { callResearchWebhook, cleanErrorMessage, calculateModelCost, estimateTokenCount } from './gateway';
+import { GeminiCandidate, GroundingChunk } from '../types';
 
 export type FocusMode = 'default' | 'reddit' | 'github' | 'youtube';
 
@@ -51,22 +52,22 @@ export async function streamGroundingSearch(
   try {
     const model = genAI.getGenerativeModel({ 
       model: modelName,
-      tools: [{ googleSearch: {} }] as any
+      tools: [{ googleSearch: {} }] as unknown as never
     });
     result = await model.generateContentStream(sysPrompt);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.warn(`[Grounding Stream] Gemini 2.5 Flash failed, trying Gemini 1.5 Flash:`, error);
     modelName = 'gemini-1.5-flash';
     
     try {
       const model = genAI.getGenerativeModel({ 
         model: modelName,
-        tools: [{ googleSearch: {} }] as any
+        tools: [{ googleSearch: {} }] as unknown as never
       });
       result = await model.generateContentStream(sysPrompt);
-    } catch (fallbackError: any) {
+    } catch (fallbackError: unknown) {
       console.error('[Grounding Stream] Both Gemini 2.5 and 1.5 models failed:', fallbackError);
-      await onError(`Search limits reached: Gemini rate limit hit. (${fallbackError.message || fallbackError})`);
+      await onError(`Search limits reached: Gemini rate limit hit. (${(fallbackError instanceof Error ? fallbackError.message : String(fallbackError)) || fallbackError})`);
       return;
     }
   }
@@ -80,10 +81,10 @@ export async function streamGroundingSearch(
     }
 
     const citations: string[] = [];
-    const responseData = await result.response;
-    const metadata = (responseData as any).candidates?.[0]?.groundingMetadata;
+    const responseData = await result.response as unknown as { candidates?: GeminiCandidate[] };
+    const metadata = responseData.candidates?.[0]?.groundingMetadata;
     if (metadata?.groundingChunks) {
-      metadata.groundingChunks.forEach((chunk: any) => {
+      metadata.groundingChunks.forEach((chunk: GroundingChunk) => {
         if (chunk.web?.uri) {
           citations.push(chunk.web.uri);
         }
@@ -101,8 +102,8 @@ export async function streamGroundingSearch(
       outputTokens,
       cost
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Grounding Stream] Content collection failed:', error);
-    await onError(error.message || 'Failed to stream search grounding content.');
+    await onError((error instanceof Error ? error.message : String(error)) || 'Failed to stream search grounding content.');
   }
 }

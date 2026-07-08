@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { ResultNode } from '../types';
 
 export interface OrchestrationRun {
   id: string;
@@ -7,7 +8,7 @@ export interface OrchestrationRun {
   mode: string;
   reason: string | null;
   summary: string | null;
-  results: any[];
+  results: ResultNode[];
 }
 
 export function useHistory() {
@@ -17,14 +18,18 @@ export function useHistory() {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('orchestrator_history');
       if (saved) {
-        try { setHistory(JSON.parse(saved)); } catch (e) {}
+        try { 
+          const data = JSON.parse(saved);
+          setTimeout(() => setHistory(data), 0);
+        } catch (e) { console.error('Failed to parse history:', e); }
       }
     }
   }, []);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    setIsLoaded(true);
+    const timer = setTimeout(() => setIsLoaded(true), 0);
+    return () => clearTimeout(timer);
   }, []);
 
   const saveRun = (run: Omit<OrchestrationRun, 'id' | 'timestamp'>) => {

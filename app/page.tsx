@@ -1,11 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Send, Moon, Sun, Loader2, Menu, X, Clock, Trash2, RefreshCcw, Layers, CheckCircle2, MessageSquare, Flame, Globe, Code, Video } from 'lucide-react';
-import { useHistory, OrchestrationRun } from '@/lib/hooks/useHistory';
+import { useHistory } from '@/lib/hooks/useHistory';
+import { useTheme } from 'next-themes';
 import ResultsView from '@/components/ResultsView';
 
 export default function Home() {
+  const { theme, setTheme, resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
@@ -21,18 +28,33 @@ export default function Home() {
   
   // History and Sidebar state
   const { history, saveRun, deleteRun, clearHistory } = useHistory();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-
-  // Theme state
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   useEffect(() => {
-    // Check system preference on mount
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      setIsDarkMode(true);
-      document.documentElement.classList.add('dark');
+    if (window.innerWidth < 768) {
+      setIsSidebarOpen(false);
     }
   }, []);
+
+  // Micro-interactions and side effects
+  useEffect(() => {
+    // Add micro-interaction to buttons dynamically (similar to mockup script)
+    const handleBtnClick = (e: MouseEvent) => {
+      const target = e.currentTarget as HTMLElement;
+      target.classList.add('scale-[0.98]');
+      setTimeout(() => target.classList.remove('scale-[0.98]'), 100);
+    };
+    
+    document.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', handleBtnClick as EventListener);
+    });
+
+    return () => {
+      document.querySelectorAll('button').forEach(btn => {
+        btn.removeEventListener('click', handleBtnClick as EventListener);
+      });
+    };
+  }, [results, isLoading, history]);
 
   const loadPastRun = (run: any) => {
     setPrompt(run.prompt);
@@ -45,7 +67,7 @@ export default function Home() {
       { role: 'user', content: run.prompt },
       { role: 'assistant', content: run.summary || 'Completed' }
     ]);
-    if (window.innerWidth < 1024) {
+    if (window.innerWidth < 768) {
       setIsSidebarOpen(false); // Close sidebar on mobile after selection
     }
   };
@@ -59,15 +81,6 @@ export default function Home() {
     setMessages([]);
     setError(null);
     setFocusMode('default');
-  };
-
-  const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode);
-    if (!isDarkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
   };
 
   const handleRun = async () => {
@@ -230,7 +243,6 @@ export default function Home() {
                 break;
 
               case 'status':
-                // Handle intermediate status flags (optional, log for now)
                 console.log(`[Stream Status]: ${parsed.status}`);
                 break;
             }
@@ -265,230 +277,234 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 transition-colors duration-300 font-sans relative overflow-hidden">
-      
-      {/* Background Glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[500px] bg-gradient-to-b from-blue-500/10 to-transparent dark:from-blue-500/5 blur-3xl -z-10 pointer-events-none" />
-      
-      {/* Header */}
-      <header className="border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md shadow-sm transition-colors duration-300 sticky top-0 z-40">
-        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button 
-              onClick={() => setIsSidebarOpen(true)}
-              className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors text-zinc-600 dark:text-zinc-400"
-              title="History"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-            <div className="flex items-center gap-2">
-              <Layers className="w-6 h-6 text-blue-600 dark:text-blue-500" />
-              <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-zinc-900 to-zinc-600 dark:from-white dark:to-zinc-400">
-                Orchestrator MVP
-              </h1>
+    <>
+      {/* SideNavBar (Drawer on mobile, fixed on desktop) */}
+      <aside className={`fixed top-0 h-screen w-64 bg-surface flex flex-col border-r border-outline z-50 transition-all duration-300 ${isSidebarOpen ? 'left-0' : '-left-64'}`}>
+        <div className="p-6 flex justify-between items-center md:block border-b border-outline md:border-none">
+          <div>
+            <h1 className="font-headline-md text-headline-md font-bold text-on-surface tracking-tighter">ORCHESTRATOR_V1</h1>
+            <p className="font-label-sm text-label-sm text-outline mt-1 uppercase">Session: 0x8F2</p>
+          </div>
+          <button className="md:hidden" onClick={() => setIsSidebarOpen(false)}>
+            <span className="material-symbols-outlined text-outline">close</span>
+          </button>
+        </div>
+        
+        <button onClick={resetChat} className="mx-4 mt-4 mb-6 flex items-center justify-center gap-2 px-4 py-3 bg-primary text-on-primary font-bold block-shadow active-press transition-all">
+          <span className="material-symbols-outlined text-[20px]">add_circle</span>
+          <span className="font-label-sm text-label-sm uppercase">New Notebook Page</span>
+        </button>
+
+        <nav className="flex-1 overflow-y-auto px-4 space-y-2 pb-24 md:pb-0">
+          <p className="font-label-sm text-label-sm text-outline px-2 py-4 border-b border-outline-variant mb-2">HISTORY</p>
+          
+          <div className="space-y-4 pt-6">
+            {history.length === 0 ? (
+              <p className="px-2 font-label-sm text-label-sm text-outline">No history entries.</p>
+            ) : (
+              history.map((run) => (
+                <div key={run.id} onClick={() => loadPastRun(run)} className="flex items-center justify-between group cursor-pointer px-2">
+                  <span className="font-body-md text-on-surface-variant group-hover:text-primary transition-colors truncate max-w-[120px]">{run.prompt.substring(0, 20)}...</span>
+                  <div className="dotted-leader hidden sm:block"></div>
+                  <span className="font-label-sm text-label-sm text-outline">
+                    {new Date(run.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }).toUpperCase()}
+                  </span>
+                  <span className="material-symbols-outlined text-[14px] text-error opacity-0 group-hover:opacity-100 ml-2" onClick={(e) => { e.stopPropagation(); deleteRun(run.id); }}>delete</span>
+                </div>
+              ))
+            )}
+          </div>
+          
+          {history.length > 0 && (
+            <div className="pt-4">
+              <button onClick={clearHistory} className="px-2 font-label-sm text-label-sm text-error hover:underline uppercase">Clear History</button>
             </div>
+          )}
+
+        </nav>
+      </aside>
+
+      {/* TopAppBar */}
+      <header className={`fixed top-0 right-0 h-16 bg-surface border-b-2 border-outline z-40 flex justify-between items-center px-4 md:px-8 shadow-[0px_4px_0px_0px_var(--shadow-color)] md:shadow-none md:border-b-2 md:border-border-bold transition-all duration-300 ${isSidebarOpen ? 'left-0 md:left-64' : 'left-0'}`}>
+        <div className="flex items-center gap-3 md:gap-6">
+          <button 
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsSidebarOpen(prev => !prev);
+            }}
+            className="material-symbols-outlined text-primary text-[28px] cursor-pointer flex items-center justify-center p-1 hover:bg-surface-container-low transition-colors rounded relative z-50 pointer-events-auto"
+            aria-label="Toggle Navigation Drawer"
+          >
+            menu
+          </button>
+          <span className="font-headline-md text-headline-md font-bold uppercase text-primary tracking-tight">ORCHESTRATOR</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="font-label-sm text-[10px] sm:text-xs text-outline uppercase tracking-widest font-bold">
+            Built By Caine
           </div>
           <button 
-            onClick={toggleDarkMode}
-            className="p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-            aria-label="Toggle dark mode"
+            onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+            className="w-8 h-8 rounded-full border border-outline bg-surface-container-low text-on-surface flex items-center justify-center cursor-pointer hover:bg-surface-container-high transition-colors active:scale-95"
+            aria-label="Toggle Theme"
           >
-            {isDarkMode ? <Sun className="w-5 h-5 text-zinc-400" /> : <Moon className="w-5 h-5 text-zinc-500" />}
+            <span className="material-symbols-outlined text-[18px]">
+              {mounted && resolvedTheme === 'dark' ? 'light_mode' : 'dark_mode'}
+            </span>
           </button>
         </div>
       </header>
 
-      {/* Sidebar Overlay */}
-      {isSidebarOpen && (
-        <div className="fixed inset-0 z-50 flex">
-          <div 
-            className="fixed inset-0 bg-zinc-900/20 dark:bg-black/40 backdrop-blur-sm transition-opacity" 
-            onClick={() => setIsSidebarOpen(false)} 
-          />
-          <div className="relative w-80 max-w-[80vw] bg-white dark:bg-zinc-900 h-full shadow-2xl border-r border-zinc-200 dark:border-zinc-800 flex flex-col animate-in slide-in-from-left duration-300">
-            <div className="p-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-              <h2 className="font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                Recent Runs
+      {/* Main Content Canvas */}
+      <main className={`mt-16 pt-6 md:pt-12 pb-64 md:pb-48 px-2 md:px-12 min-h-screen relative overflow-x-hidden transition-all duration-300 ${isSidebarOpen ? 'md:ml-64' : 'ml-0'}`}>
+        
+        {/* Red Margin Line */}
+        <div className="absolute top-0 bottom-0 left-[32px] md:left-[48px] w-[2px] bg-error/50 z-[-1] pointer-events-none"></div>
+
+        <div className="max-w-4xl mx-auto space-y-6 md:space-y-12 pl-[56px] pr-4 md:pl-12 md:pr-0">
+          
+          {/* Welcome State */}
+          {results.length === 0 && !isLoading && !error && (
+            <div className="text-center mt-10 md:mt-20 mb-12">
+              <h2 className="font-headline-lg text-[24px] md:text-headline-lg font-extrabold tracking-tight mb-4 text-on-background uppercase pr-4">
+                Intelligence at Scale
               </h2>
-              <button onClick={() => setIsSidebarOpen(false)} className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-zinc-500">
-                <X className="w-5 h-5" />
-              </button>
+              <p className="font-body-md text-body-md text-outline max-w-2xl mx-auto pr-4">
+                Ask a complex question to compare models instantly, or use the grounding focus modes below to trigger live web research.
+              </p>
             </div>
-            
-            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-              {history.length === 0 ? (
-                <div className="text-sm text-zinc-500 dark:text-zinc-400 text-center py-8">
-                  No history yet. Run a prompt to save it here.
-                </div>
-              ) : (
-                history.map((run) => (
-                  <div key={run.id} className="group relative bg-zinc-50 dark:bg-zinc-800/50 rounded-xl p-3 border border-zinc-200 dark:border-zinc-800 hover:border-blue-300 dark:hover:border-blue-700 transition-colors cursor-pointer" onClick={() => loadPastRun(run)}>
-                    <div className="flex items-start justify-between gap-2 mb-1">
-                      <span className="text-xs font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wider">{run.mode}</span>
-                      <span className="text-[10px] text-zinc-400">{new Date(run.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                    </div>
-                    <p className="text-sm text-zinc-700 dark:text-zinc-300 line-clamp-2">{run.prompt}</p>
-                    
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); deleteRun(run.id); }}
-                      className="absolute bottom-2 right-2 p-1.5 bg-white dark:bg-zinc-700 rounded-lg shadow-sm text-red-500 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50 dark:hover:bg-red-900/30"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))
-              )}
+          )}
+
+          {/* Error State */}
+          {error && !isLoading && (
+            <div className="bg-error-container text-on-error-container border border-error block-shadow p-6 mb-8 flex flex-col items-center text-center mr-2">
+              <span className="material-symbols-outlined text-4xl mb-2">warning</span>
+              <span className="font-headline-md font-bold block mb-1">System Exception</span>
+              <span className="font-code-md text-[12px] md:text-sm">{error}</span>
             </div>
-            {history.length > 0 && (
-              <div className="p-4 border-t border-zinc-200 dark:border-zinc-800">
-                <button onClick={clearHistory} className="w-full py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
-                  Clear History
-                </button>
-              </div>
-            )}
-          </div>
+          )}
+
+          {/* Loading State */}
+          {isLoading && results.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 gap-4 text-outline mr-4">
+              <span className="material-symbols-outlined animate-spin text-4xl text-primary">autorenew</span>
+              <p className="font-label-sm font-bold uppercase tracking-widest text-center">Orchestrating AI models...</p>
+            </div>
+          )}
+
+          {/* Results View */}
+          {results.length > 0 && (
+            <div className="pr-2 md:pr-0">
+              <ResultsView 
+                mode={mode} 
+                summary={summary}
+                reason={reason}
+                results={results} 
+                isLoading={isLoading}
+              />
+            </div>
+          )}
+          
         </div>
-      )}
-
-      <main className="flex-grow w-full max-w-5xl mx-auto p-6 pt-12 flex flex-col items-center">
-        
-        {/* Welcome Text (if no results yet) */}
-        {results.length === 0 && !isLoading && !error && (
-          <div className="text-center mb-12 max-w-2xl animate-fade-in">
-            <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4 text-zinc-800 dark:text-zinc-100">
-              Intelligence at Scale
-            </h2>
-            <p className="text-lg md:text-xl text-zinc-500 dark:text-zinc-400">
-              Ask a complex question to compare models instantly, or use keywords like "latest" or a URL to trigger live web research.
-            </p>
-          </div>
-        )}
-
-        {/* Unified Chatbox */}
-        <div className={`w-full max-w-3xl transition-all duration-700 ease-out ${results.length > 0 || error ? 'mb-8' : 'scale-105 transform-gpu mt-12'}`}>
-          <div className="relative bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl rounded-3xl shadow-xl shadow-blue-900/5 dark:shadow-black/50 border border-zinc-200/80 dark:border-zinc-800/80 p-2 group focus-within:ring-4 focus-within:ring-blue-500/20 focus-within:border-blue-500/50 transition-all">
-            <textarea
-              className="w-full bg-transparent resize-none outline-none p-4 min-h-[120px] text-lg placeholder:text-zinc-400 dark:placeholder:text-zinc-500 disabled:opacity-50"
-              placeholder="Enter your prompt, a topic to research, or a URL to analyze..."
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              disabled={isLoading}
-              rows={4}
-            />
-            {/* Action Row */}
-            <div className="flex flex-col sm:flex-row gap-3 sm:items-center justify-between mt-3 p-2 border-t border-zinc-100 dark:border-zinc-800/40 pt-3">
-              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                {/* Focus Mode Selection Pills */}
-                <div className="flex items-center gap-1 p-0.5 bg-zinc-100 dark:bg-zinc-800/80 rounded-full border border-zinc-200/80 dark:border-zinc-700/60 max-w-full overflow-x-auto whitespace-nowrap">
-                  {[
-                    { id: 'default', label: 'Web', icon: Globe },
-                    { id: 'reddit', label: 'Reddit', icon: Flame },
-                    { id: 'github', label: 'GitHub', icon: Code },
-                    { id: 'youtube', label: 'YouTube', icon: Video }
-                  ].map((opt) => {
-                    const Icon = opt.icon;
-                    const isActive = focusMode === opt.id;
-                    return (
-                      <button
-                        key={opt.id}
-                        onClick={() => setFocusMode(opt.id)}
-                        type="button"
-                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all duration-300 ${
-                          isActive
-                            ? 'bg-white dark:bg-zinc-950 text-zinc-900 dark:text-white shadow-sm border-zinc-200 dark:border-zinc-800'
-                            : 'border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
-                        }`}
-                        title={`${opt.label} Search Focus`}
-                      >
-                        <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-blue-500 dark:text-blue-400' : ''}`} />
-                        {opt.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                
-                {/* New Chat / Reset conversation */}
-                {(messages.length > 0 || results.length > 0) && (
-                  <button
-                    onClick={resetChat}
-                    type="button"
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border bg-zinc-100 dark:bg-zinc-805 border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition-all shrink-0"
-                    title="Start a new chat topic"
-                  >
-                    <RefreshCcw className="w-3 h-3 text-zinc-400" />
-                    New Chat
-                  </button>
-                )}
-
-                <div className="hidden sm:flex text-xs text-zinc-400 font-medium gap-4 border-l border-zinc-200 dark:border-zinc-800 pl-4">
-                  <span className="flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Parallel</span>
-                  <span className="flex items-center gap-1"><MessageSquare className="w-3.5 h-3.5" /> Multi-LLM</span>
-                </div>
-              </div>
-              
-              <div className="flex items-center justify-end gap-2 w-full sm:w-auto border-t sm:border-t-0 border-zinc-150 dark:border-zinc-800/40 pt-2 sm:pt-0">
-                {results.length > 0 && (
-                  <button
-                    onClick={handleRun}
-                    disabled={isLoading || !prompt.trim()}
-                    className="p-3 bg-zinc-100 dark:bg-zinc-805 text-zinc-600 dark:text-zinc-300 rounded-2xl hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-                    title="Regenerate"
-                  >
-                    <RefreshCcw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
-                  </button>
-                )}
-                <button
-                  onClick={handleRun}
-                  disabled={isLoading || !prompt.trim()}
-                  className="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-2xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95 shadow-md shadow-blue-600/20 w-full sm:w-auto"
-                >
-                  {isLoading ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <Send className="w-5 h-5" />
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Error State */}
-        {error && !isLoading && (
-          <div className="w-full max-w-3xl p-4 mb-8 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900/50 rounded-2xl animate-fade-in flex flex-col items-center text-center">
-            <span className="font-semibold block mb-1">System Notice</span>
-            <span className="text-sm">{error}</span>
-          </div>
-        )}
-
-        {/* Loading State */}
-        {isLoading && results.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 gap-4 text-zinc-500 dark:text-zinc-400 animate-pulse">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-            <p className="font-medium text-lg">Orchestrating AI models...</p>
-          </div>
-        )}
-
-        {/* Results View */}
-        {results.length > 0 && (
-          <ResultsView 
-            mode={mode} 
-            summary={summary}
-            reason={reason}
-            results={results} 
-            isLoading={isLoading}
-          />
-        )}
-        
       </main>
 
-      {/* Footer */}
-      <footer className="w-full py-8 border-t border-zinc-200 dark:border-zinc-850 bg-white/20 dark:bg-zinc-900/10 text-center mt-12 transition-all">
-        <p className="text-xs font-medium text-zinc-400 dark:text-zinc-500 tracking-wide uppercase">
-          Orchestrator MVP • Built by <span className="font-semibold text-zinc-600 dark:text-zinc-300">Caine</span>
-        </p>
-      </footer>
-    </div>
+      {/* Mobile Drawer Backdrop */}
+      {isSidebarOpen && (
+        <div 
+          onClick={() => setIsSidebarOpen(false)} 
+          className="fixed inset-0 bg-black/40 dark:bg-black/60 z-40 md:hidden transition-opacity duration-300"
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Input Area (Bottom Fixed) */}
+      <div className={`fixed bottom-20 md:bottom-0 right-0 p-3 md:p-8 flex justify-center pointer-events-none z-40 transition-all duration-300 ${isSidebarOpen ? 'left-0 md:left-64' : 'left-0'}`}>
+        <div className="w-full max-w-4xl pointer-events-auto pl-[56px] pr-4 md:px-0">
+          <div className={`bg-surface border-2 transition-all duration-300 p-1 ${
+            focusMode === 'reddit' 
+              ? 'border-[#ff5700] shadow-[4px_4px_0px_0px_#ff5700]' 
+              : focusMode === 'github'
+              ? 'border-[#24292e] dark:border-[#f0f6fc] shadow-[4px_4px_0px_0px_#24292e] dark:shadow-[4px_4px_0px_0px_#f0f6fc]'
+              : focusMode === 'youtube'
+              ? 'border-[#ff0000] shadow-[4px_4px_0px_0px_#ff0000]'
+              : 'border-border-bold shadow-[4px_4px_0px_0px_var(--shadow-color)]'
+          }`}>
+            {/* Ruled Paper Texture */}
+            <div className="ruled-paper bg-surface p-3 md:p-6 min-h-[100px] md:min-h-[120px] relative">
+              <div className="absolute top-2 right-4 hidden md:block">
+                <span className="font-label-sm text-label-sm text-outline-variant uppercase">ENTRY_FIELD</span>
+              </div>
+              <textarea 
+                className="w-full bg-transparent border-none focus:ring-0 outline-none font-body-md text-sm md:text-body-md placeholder:text-outline-variant resize-none disabled:opacity-50" 
+                placeholder="Enter semantic prompt..." 
+                rows={3}
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                disabled={isLoading}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleRun();
+                  }
+                }}
+              ></textarea>
+              
+              <div className="flex flex-col md:flex-row items-center justify-between mt-2 md:mt-4 gap-3">
+                <div className="flex flex-nowrap md:flex-wrap overflow-x-auto w-full md:w-auto gap-2 pb-1 md:pb-0 scrollbar-hide">
+                  {[
+                    { id: 'default', label: 'Web', activeClass: 'bg-primary text-on-primary border-primary' },
+                    { id: 'reddit', label: 'Reddit', activeClass: 'bg-[#ff5700] text-white border-[#ff5700]' },
+                    { id: 'github', label: 'GitHub', activeClass: 'bg-[#24292e] text-white border-[#24292e] dark:bg-[#f0f6fc] dark:text-black dark:border-[#f0f6fc]' },
+                    { id: 'youtube', label: 'YouTube', activeClass: 'bg-[#ff0000] text-white border-[#ff0000]' }
+                  ].map((opt) => (
+                    <button 
+                      type="button"
+                      key={opt.id}
+                      onClick={() => setFocusMode(opt.id)}
+                      className={`px-3 py-1 border font-label-sm text-[10px] md:text-label-sm whitespace-nowrap transition-colors flex items-center gap-1 ${
+                        focusMode === opt.id 
+                          ? `${opt.activeClass} block-shadow-sm` 
+                          : 'bg-surface-container-low border-outline hover:bg-surface-container-high text-on-surface'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                
+                <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+                  <button 
+                    type="button"
+                    onClick={handleRun}
+                    disabled={isLoading || !prompt.trim()}
+                    className="bg-primary text-on-primary w-full md:w-auto px-6 py-2.5 md:py-2 font-headline-md md:font-bold block-shadow active-press uppercase tracking-widest text-sm flex justify-center items-center gap-2 disabled:opacity-50"
+                  >
+                    Run Logic <span className="material-symbols-outlined text-sm hidden md:inline">{isLoading ? 'hourglass_empty' : 'bolt'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* BottomNavBar (Mobile Only) */}
+      <nav className="fixed bottom-0 left-0 w-full z-50 flex md:hidden justify-center items-center px-4 h-20 bg-surface border-t-2 border-border-bold shadow-[0px_-4px_0px_0px_var(--shadow-color)] gap-8">
+        {/* History (Toggles Drawer) */}
+        <a className={`flex flex-col items-center justify-center border border-border-bold p-2 transition-all min-w-[80px] ${isSidebarOpen ? 'bg-primary-container text-on-primary-container shadow-[2px_2px_0px_0px_var(--shadow-color)]' : 'text-on-surface-variant opacity-70'}`} href="#" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsSidebarOpen(prev => !prev); }}>
+          <span className="material-symbols-outlined">history</span>
+          <span className="font-label-sm text-[10px] uppercase tracking-widest mt-1">History</span>
+        </a>
+        
+        {/* New (Active Action) */}
+        <a className="flex flex-col items-center justify-center text-primary active:translate-x-[1px] active:translate-y-[1px] transition-all min-w-[80px]" href="#" onClick={(e) => { e.preventDefault(); resetChat(); }}>
+          <span className="material-symbols-outlined">add_box</span>
+          <span className="font-label-sm text-[10px] uppercase tracking-widest mt-1 font-bold">New</span>
+        </a>
+      </nav>
+    </>
   );
 }
+

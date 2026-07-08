@@ -11,18 +11,18 @@ export interface OrchestrationRun {
 }
 
 export function useHistory() {
-  const [history, setHistory] = useState<OrchestrationRun[]>([]);
+  const [history, setHistory] = useState<OrchestrationRun[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('orchestrator_history');
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) {}
+      }
+    }
+    return [];
+  });
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem('orchestrator_history');
-    if (saved) {
-      try {
-        setHistory(JSON.parse(saved));
-      } catch (e) {
-        console.error('Failed to parse history');
-      }
-    }
     setIsLoaded(true);
   }, []);
 

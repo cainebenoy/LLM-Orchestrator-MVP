@@ -3,13 +3,13 @@ import { decideMode } from '@/lib/models/router';
 import { 
   callCompareWebhook, 
   callResearchWebhook, 
-  synthesizeSummary,
   cleanErrorMessage,
   streamGeminiDirect,
   streamGroqDirect,
   streamSynthesizeSummary
 } from '@/lib/models/gateway';
 import { streamGroundingSearch, FocusMode } from '@/lib/models/grounding';
+import { ResultNode } from '@/lib/types';
 
 // Default models to run in compare mode via Make.com (e.g. Claude + ChatGPT)
 const DEFAULT_MAKE_MODELS = ['claude-3-5-sonnet', 'gpt-4o'];
@@ -137,7 +137,7 @@ export async function POST(request: Request) {
 
         // --- Compare Mode ---
         if (decision.mode === 'compare') {
-          const finalResults: any[] = [];
+          const finalResults: ResultNode[] = [];
 
           // Trigger all calls concurrently (direct streams + Make webhook)
           const geminiPromise = streamGeminiDirect(

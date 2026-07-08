@@ -1,6 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { estimateTokenCount, calculateModelCost } from './gateway';
-import { GeminiCandidate, GroundingChunk } from '../types';
 
 async function fetchRedditJSON(query: string): Promise<{ text: string, citations: string[] }> {
   // Use a custom User-Agent to comply with Reddit's unauthenticated API guidelines

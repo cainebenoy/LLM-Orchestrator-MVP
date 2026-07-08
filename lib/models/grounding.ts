@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { callResearchWebhook, cleanErrorMessage, calculateModelCost, estimateTokenCount } from './gateway';
+import { calculateModelCost, estimateTokenCount } from './gateway';
 import { GeminiCandidate, GroundingChunk } from '../types';
 
 export type FocusMode = 'default' | 'reddit' | 'github' | 'youtube';

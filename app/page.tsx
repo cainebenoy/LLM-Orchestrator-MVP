@@ -5,9 +5,10 @@ import { useHistory } from '@/lib/hooks/useHistory';
 import { useTheme } from 'next-themes';
 import ResultsView from '@/components/ResultsView';
 import { ResultNode } from '@/lib/types';
+import { OrchestrationRun } from '@/lib/hooks/useHistory';
 
 export default function Home() {
-  const { theme, setTheme, resolvedTheme } = useTheme();
+  const { setTheme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   
   useEffect(() => {
@@ -61,7 +62,7 @@ export default function Home() {
     };
   }, [results, isLoading, history]);
 
-  const loadPastRun = (run: any) => {
+  const loadPastRun = (run: OrchestrationRun) => {
     setPrompt(run.prompt);
     setMode(run.mode);
     setResults(run.results);
@@ -105,7 +106,7 @@ export default function Home() {
     // Clear input box immediately for next chat turn
     setPrompt('');
 
-    let currentResults: any[] = [];
+    let currentResults: ResultNode[] = [];
     let currentSummary = '';
     let currentMode = '';
     let currentReason: string | null = null;
@@ -213,12 +214,12 @@ export default function Home() {
                 if (exists) {
                   currentResults = currentResults.map(r => {
                     if (r.source === parsed.model) {
-                      return { ...r, ...(parsed.result as object), isLoading: false };
+                      return { ...r, ...(parsed.result as Partial<ResultNode>), isLoading: false };
                     }
                     return r;
                   });
                 } else {
-                  currentResults.push({ ...(parsed.result as object), isLoading: false });
+                  currentResults.push({ ...(parsed.result as ResultNode), isLoading: false });
                 }
                 setResults(currentResults);
                 break;
@@ -261,7 +262,7 @@ export default function Home() {
       saveRun({
         prompt: userMessage.content,
         mode: currentMode || 'compare',
-        results: currentResults.map(({ isLoading, ...rest }) => rest), // Clean loading flags
+        results: currentResults.map(({ isLoading: _isLoading, ...rest }) => rest), // Clean loading flags
         summary: currentSummary || null,
         reason: currentReason || null,
       });

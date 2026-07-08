@@ -96,7 +96,7 @@ export async function POST(request: Request) {
                   
                   const val = webhookResponse.results[0];
                   const finalResult = {
-                    source: `${activeFocusMode}-fallback`,
+                    source: activeFocusMode,
                     label: `${val.label || 'Claude/GPT'} (${focusLabel} Fallback)`,
                     text: val.text,
                     citations: val.citations || [],
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
                     cost: val.cost || 0
                   };
 
-                  sendEvent('completed', { model: `${activeFocusMode}-fallback`, result: finalResult });
+                  sendEvent('completed', { model: activeFocusMode, result: finalResult });
                   sendEvent('summary_completed', { summary: val.text });
                 } catch (fallbackErr: any) {
                   console.error(`[API/Ask Stream] ${focusLabel} fallback webhook also failed:`, fallbackErr);
